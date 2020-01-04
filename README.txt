@@ -10,17 +10,23 @@ of the system controller is to operate a biphase mark coding
 PHY as well as the USB Type-C and USB-PD signalling used in
 conjunction with the PHY.
 
+The testing framework, VUnit, relies on having Python and a
+suitable simulator installed. Tests are known to work when
+using GHDL 0.36 under Ubuntu 18.04 LTS.
+
 
 STRUCTURE
 
     src/            - Project source code
         design/     - HDL for the controller design
         test/       - HDL for test benches, etc.
+    
+    script/         - Scripts related to project development
 
 
 COPYRIGHT & LICENCE
 
-    2019 (c) Liam McSherry
+    2019-20 (c) Liam McSherry
     
     Released under the terms of the GNU Affero GPL 3.0. A
     copy of this licence is available in './LICENCE.txt'.

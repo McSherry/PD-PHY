@@ -1,1 +1,4 @@
 VivadoProj/
+src/__pycache__/
+src/vunit_out/
+script/vunit_out/
