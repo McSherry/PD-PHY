@@ -43,7 +43,9 @@ architecture Impl of BiphaseMarkTx_TB is
     -- Timing constants
     constant T  : time := 3.33 us;
     
-begin    
+begin
+    test_runner_watchdog(runner, 25 us);
+
     process
         -- Arguments to produce the test waveform from figure B2, which
         -- is the transmission of the sequence "10"
@@ -119,6 +121,8 @@ begin
             -- transition, logic low can be line-high or line-low. Similarly,
             -- logic high can have a high-to-low or low-to-high transition.
             elsif run("TX_01101") then
+                set_timeout(runner, 40 us);
+            
                 while Cycle < 6 loop
                     wait until rising_edge(CLK);
                     
