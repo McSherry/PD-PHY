@@ -32,19 +32,18 @@ architecture Impl of BiphaseMarkTx_TB is
     signal Q, OE        : std_logic;
     
     -- Test internal signals variables
-    signal CapCLK       : std_logic := '0';
     signal Terminate    : std_logic := '0';
-    signal Cycle        : integer := 0;
+    signal Cycle        : integer   := 0;
     -- Register to hold captured data
     --      As BMC may produce multiple transitions per bit,
     --      we need more register locations than bits
-    signal R            : std_logic_vector(0 to 11);
+    signal R            : std_logic_vector(0 to 12);
     
     -- Timing constants
     constant T  : time := 3.33 us;
     
 begin
-    test_runner_watchdog(runner, 25 us);
+    test_runner_watchdog(runner, 35 us);
 
     process
         -- Arguments to produce the test waveform from figure B2, which
@@ -79,10 +78,12 @@ begin
                     "1" & "1" & --  2
                     "0" & "1" & --  3
                     "1" & "1" & --  4
-                    "0" & "0"
+                    "0" & "0"   --  5
             );
     begin
         test_runner_setup(runner, runner_cfg);
+        -- If verbose output is enabled, this causes passing checks to show.
+        show(get_logger(default_checker), display_handler, pass);
         
         while test_suite loop
             
@@ -120,9 +121,7 @@ begin
             -- absolute state of the line but the presence or absence of a
             -- transition, logic low can be line-high or line-low. Similarly,
             -- logic high can have a high-to-low or low-to-high transition.
-            elsif run("TX_01101") then
-                set_timeout(runner, 40 us);
-            
+            elsif run("TX_01101") then            
                 while Cycle < 6 loop
                     wait until rising_edge(CLK);
                     
@@ -158,32 +157,44 @@ begin
     -- Transmitter data clock
     DCLK: process
     begin
-        if (Terminate /= '1') then
-            wait for T/2;
-            CLK <= not CLK;
+        wait for T/2;
+        CLK <= not CLK;
+        
+        if Terminate = '1' then
+            wait;
         end if;
     end process;
     
     
-    -- Test capture clock
-    --      Double the frequency of the data clock, as this is the
-    --      frequency of the BMC data we're looking for
-    CCLK: process
-    begin
-        if (Terminate /= '1') then
-            wait for T/4;
-            CapCLK <= not CapCLK;
-        end if;
-    end process;
-    
-    
-    -- Logic responsible for capturing output from the UUT into a
-    -- register and comparing it with the ressults we expect, for the
-    -- test cases which cover full transactions.
-    capture_compare: process(CapCLK, OE)
+    -- Logic for capturing output from the UUT into a register to be tested
+    -- once the transmission completes.
+    capture: process
         -- Current index into the register
         variable Index  : integer := 0;
+    begin
+        -- We want to begin capturing when the output is enabled
+        wait until OE = '1';
         
+        while OE = '1' loop                
+            -- As BMC operates on periods of half a unit interval, we capture
+            -- every half unit interval.
+            wait for T/2;
+            
+            -- Capture the current output
+            --
+            -- If an "out of bounds" error occurs here, it may indicate that
+            -- the output enable (OE) is never deasserted.
+            R(Index) <= Q;
+            Index    := Index + 1;
+        end loop;
+        
+        -- Once we've finished capturing output, do nothing.
+        wait;
+    end process;
+    
+    
+    -- Logic for comparing the captured output to expected vectors.
+    compare: process
         -- Test vectors
         constant Vec_TX_10  : std_logic_vector(0 to 7) :=
             (
@@ -209,51 +220,37 @@ begin
                 "01" &  -- fifth bit (logic high, L->H)
                 "00"    -- hold line low
             );
-    begin    
-        -- We shouldn't produce more output than the register can hold
-        check(Index <= (R'length - 1), 
-            "Register overflow (may indicate OE never deasserted)");
-    
-        -- Capture Q on every clock where OE is high, as that is
-        -- the only time output can be valid
-        if rising_edge(CapCLK) and OE = '1' then
-            R(Index) <= Q;
-            Index := Index + 1;
+    begin
+        -- Wait for the output to first be enabled and then disabled
+        wait until OE = '1';
+        wait until OE = '0';
+        
+        -- See report figure B2
+        if running_test_case = "TX_10" then
+            check_equal(R(0 to 7), Vec_TX_10);
+                
+        -- See report figure B3
+        elsif running_test_case = "TX_11" then
+            check_equal(R(0 to 5), Vec_TX_11);
+        
+        -- See the inversion of report figure 3
+        elsif running_test_case = "TX_01101" then
+            check_equal(R(0 to 11), Vec_TX_01101);
+                    
+        else
+            check(false, "Test with no results check");
         end if;
         
-        -- If OE goes low after producing output, we want to compare
-        -- against the output we expect.
-        if (Index /= 0) and OE = '0' then
-            
-            -- See report figure B2
-            if running_test_case = "TX_10" then
-                check(R(0 to 7) = Vec_TX_10(0 to 7),
-                    "Expected " & to_string(Vec_TX_10) &
-                    "; Got " & to_string(R(0 to 7))
-                    );
-                    
-            -- See report figure B3
-            elsif running_test_case = "TX_11" then
-                check(R(0 to 5) = Vec_TX_11(0 to 5),
-                    "Expected " & to_string(Vec_TX_11) &
-                    "; Got " & to_string(R(0 to 5))
-                    );
-                        
-            
-            -- See the inversion of report figure 3
-            elsif running_test_case = "TX_01101" then
-                check(R(0 to 11) = Vec_TX_01101(0 to 11),
-                    "Expected " & to_string(Vec_TX_01101) &
-                    "; Got " & to_string(R(0 to 11))
-                    );
-                        
-            else
-                check(false, "Test with no results check");
-            end if;
-            
-            Terminate <= '1';
-            
-        end if;
+        -- Waiting here isn't strictly necessary, but if we're viewing a
+        -- simulation waveform this allows us to see that OE returns to
+        -- zero after transmission completes.
+        wait on CLK;
+        wait on CLK;
+        
+        -- VUnit doesn't seem to like this and treats it as a test failing,
+        -- so unfortunately we can't use it to end the test.
+        -- std.env.finish;
+        Terminate <= '1';
     end process;
     
     

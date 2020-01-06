@@ -77,7 +77,6 @@ begin
     main: process(CLK)
         variable State      : State_t := S1_Idle;
     begin
-    
         if rising_edge(CLK) then
             case State is
                 -- In the idle state, we simply wait for the write-enable
@@ -106,7 +105,6 @@ begin
                     -- we need a two-item register, and so that we need to shift
                     -- the value from previous cycles forward.
                     DR(1)   <= DR(0);
-                    
                     -- Allowing us to read in the present value.
                     DR(0)   <= D;
                     
@@ -147,22 +145,35 @@ begin
                 -- When transmitting, the falling edge is when we make a
                 -- mid-interval transition if necessary.
                 when S2a_Tx | S2b_TxLast =>
-                    -- If we're transmitting a '1', BMC demands that
-                    -- a transition occur mid-interval.
+                    -- If this is the last bit we're transmitting, USB-PD
+                    -- requires that we enter a holding state after this. If
+                    -- inverting the line at the end of a transmission means
+                    -- it finishes high, we hold high then low. Otherwise, we
+                    -- only hold low.
+                    --
+                    -- Before the end of this process, Q retains the value it
+                    -- began the unit interval with. We can therefore determine
+                    -- that the line will finish the interval high:
+                    --
+                    --  o If it starts low and we transmit logic one; or
+                    --  o If it starts high and we transmit logic zero.
+                    --
+                    -- That is, if the starting state and data do not match, or
+                    -- an exclusive-or relation. As we want the inversion, this
+                    -- is simply an exclusive-not-or.
+                    --
+                    -- Hence:
+                    if State = S2b_TxLast then
+                        State := S3a_HoldHigh when Q xnor DR(1)
+                                              else S3b_HoldLow;
+                    end if;
+                    
+                    -- If we're transmitting a '1', BMC demands a transition
+                    -- occur mid-interval.
                     if DR(1) = '1' then
                         FEOut   <= not FEOut;
                     end if;
-                    
-                    -- If this is the last bit to transmit, we now transition
-                    -- into a line-holding state to finish up.
-                    --
-                    -- If inverting the line would cause it to become high, we
-                    -- first hold high then low.
-                    if State = S2b_TxLast then
-                        State   := S3a_HoldHigh when (not Q) = '1'
-                                                else S3b_HoldLow;
-                    end if;
-                    
+                
                 
                 -- We don't need to do anything on the falling edge when in one
                 -- of the holding states.
@@ -178,5 +189,5 @@ begin
     -- ensure the synthesiser doesn't do anything weird. This should prompt
     -- it to produce an inversion of CLK and two chains of logic separately
     -- driven from the normal and inverted clock.
-    Q   <= REOut xor FEOut;
+    Q <= REOut xor FEOut;
 end;
