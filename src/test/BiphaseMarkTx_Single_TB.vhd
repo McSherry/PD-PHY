@@ -12,12 +12,13 @@ library vunit_lib;
 context vunit_lib.vunit_context;
 
 
-entity BiphaseMarkTx_TB is
+entity BiphaseMarkTx_Single_TB is
     generic(runner_cfg : string := runner_cfg_default);
-end BiphaseMarkTx_TB;
+end BiphaseMarkTx_Single_TB;
 
 
-architecture Impl of BiphaseMarkTx_TB is
+-- Provides tests which perform a single transmission.
+architecture Impl of BiphaseMarkTx_Single_TB is
     component BiphaseMarkTx port(
         CLK     : in    std_logic;
         D       : in    std_logic;
@@ -175,7 +176,19 @@ begin
         -- We want to begin capturing when the output is enabled
         wait until OE = '1';
         
-        while OE = '1' loop                
+        while OE = '1' loop
+            -- We want to detect when OE is deasserted too late, so we
+            -- check the index each time we capture
+            if running_test_case = "TX_10" then
+                check_relation(Index <= 8);
+            elsif running_test_case = "TX_11" then
+                check_relation(Index <= 6);
+            elsif running_test_case = "TX_01101" then
+                check_relation(Index <= 12);
+            else
+                assert false report "Test without bounds check";
+            end if;
+        
             -- As BMC operates on periods of half a unit interval, we capture
             -- every half unit interval.
             wait for T/2;
