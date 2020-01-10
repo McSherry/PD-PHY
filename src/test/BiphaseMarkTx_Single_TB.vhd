@@ -180,6 +180,15 @@ begin
         -- We want to begin capturing when the output is enabled
         wait until OE = '1';
         
+        -- As BMC operates on periods of half a unit interval, we capture
+        -- every half unit interval.
+        --
+        -- We delay outside the loop first to allow us to put subsequent
+        -- delays at the end of the loop body. This avoids the situation
+        -- where slight mistiming means [OE = '1'] is measured at an edge
+        -- leading to a bounds violation when an extra value is sampled.
+        wait for T/2;
+        
         while OE = '1' loop
             -- We want to detect when OE is deasserted too late, so we
             -- check the index each time we capture
@@ -192,10 +201,6 @@ begin
             else
                 assert false report "Test without bounds check";
             end if;
-        
-            -- As BMC operates on periods of half a unit interval, we capture
-            -- every half unit interval.
-            wait for T/2;
             
             -- Capture the current output
             --
@@ -203,6 +208,8 @@ begin
             -- the output enable (OE) is never deasserted.
             R(Index) <= Q;
             Index    := Index + 1;
+            
+            wait for T/2;
         end loop;
         
         -- Once we've finished capturing output, do nothing.

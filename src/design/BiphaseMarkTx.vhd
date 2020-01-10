@@ -131,6 +131,16 @@ begin
                     if Q = '0' then
                         State   <= S1_Idle;
                         OE      <= '0';
+                        
+                        -- Q must start low, and we know that it is low now and
+                        -- that it will invert at the beginning of each unit
+                        -- interval. By inverting now, it idles high and will
+                        -- be inverted to low at the next transmission's start.
+                        --
+                        -- We're free to do this because of the output enable
+                        -- signal, which means a consumer should ignore Q when
+                        -- we aren't indicating it should be heeded.
+                        REOut   <= not REOut;
                     else
                         State   <= S3_Hold;
                         REOut   <= not REOut;

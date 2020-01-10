@@ -131,6 +131,9 @@ begin
         -- for the transmitter to signal its output is enabled.
         wait until OE = '1';
         
+        -- As in the single-transmission tests, we delay outside first so that
+        -- mistiming at a signal edge doesn't result in a bounds violation from
+        -- erroneous sampling of an extra value.
         wait for T/2;
         
         -- Output can change every half unit interval, so we capture data
