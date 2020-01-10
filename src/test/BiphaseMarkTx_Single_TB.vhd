@@ -12,25 +12,29 @@ library vunit_lib;
 context vunit_lib.vunit_context;
 
 
+-- Provides tests which perform a single transmission.
+--
+-- These are the basic functionality tests for the BMC transmitter, and are
+-- supplemented by './BiphaseMarkTx_Multi_TB.vhd' which tests that multiple
+-- transmissions can be performed.
 entity BiphaseMarkTx_Single_TB is
     generic(runner_cfg : string := runner_cfg_default);
 end BiphaseMarkTx_Single_TB;
 
 
--- Provides tests which perform a single transmission.
 architecture Impl of BiphaseMarkTx_Single_TB is
     component BiphaseMarkTx port(
         CLK     : in    std_logic;
         D       : in    std_logic;
         WE      : in    std_logic;
-        Q       : out   std_logic;
-        OE      : out   std_logic
+        Q       : out   std_ulogic;
+        OE      : out   std_ulogic
         );
     end component;
     
     -- Transmitter signals
     signal CLK, D, WE   : std_logic := '0';
-    signal Q, OE        : std_logic;
+    signal Q, OE        : std_ulogic;
     
     -- Test internal signals variables
     signal Terminate    : std_logic := '0';
