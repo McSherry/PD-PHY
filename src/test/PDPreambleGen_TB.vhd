@@ -38,6 +38,7 @@ architecture Impl of PDPreambleGen_TB is
     -- Timing constants
     constant T          : time := 3.33 us;
 begin
+    -- 66 cycles * T = 219.78us
     test_runner_watchdog(runner, 220 us);
     
     
@@ -73,7 +74,7 @@ begin
                 
             -- Or we might continually alternate it.
             elsif run("alternating_trigger") then
-                while Cycle < (Cycle_Max - 1) loop
+                while Cycle < (Cycle_Max - 2) loop
                     TRIG <= not TRIG;
                     wait until rising_edge(CLK);
                 end loop;
@@ -96,6 +97,7 @@ begin
     capture_verify: process
     begin
         wait until TRIG = '1';
+        wait until rising_edge(CLK);
         
         -- The output we expect is very simple: every 'even' cycle (where 0 is
         -- counted as even) should output low, and every 'odd' cycle should
@@ -103,26 +105,27 @@ begin
         --
         -- Additionally, in the final cycle, we should see FIN asserted.
         --
-        -- We check all but the last cycle in a loop.
-        while Cycle < (Cycle_Max - 1) loop
-            if (Cycle mod 2) = 0 then
-                check_equal(Q, '0');
+        -- We check all but the last cycle in a loop. We subtract two as there
+        -- is a final cycle after completion where we check for return to idle.
+        while Cycle < (Cycle_Max - 2) loop
+            if (Cycle = 0) or (Cycle mod 2) = 0 then
+                check_equal(Q, '0', "Even cycles low");
             else
-                check_equal(Q, '1');
+                check_equal(Q, '1', "Odd cycles high");
             end if;
                 
-            check_equal(FIN, '0');
+            check_equal(FIN, '0', "Final bit low except last");
             
             wait until rising_edge(CLK);
         end loop;
         
         -- We then manually verify the last cycle with output.
-        check_equal(Q, '0');
-        check_equal(FIN, '1');
+        check_equal(Q, '1', "Last cycle high");
+        check_equal(FIN, '1', "Final bit indicated");
         wait until rising_edge(CLK);
         
         -- And check for deassertion afterwards.
-        check_equal(FIN, '0');
+        check_equal(FIN, '0', "Final bit deasserted");
         
         wait;
     end process;
@@ -130,12 +133,17 @@ begin
 
     -- Data clock generation
     DCLK: process
+        variable Triggered : std_logic := '0';
     begin
         while Cycle < Cycle_Max loop
             wait for T/2;
             CLK <= not CLK;
+            Triggered := Triggered or TRIG;
             
-            if CLK = '0' then
+            wait for T/2;
+            CLK <= not CLK;
+            
+            if Triggered = '1' then
                 Cycle <= Cycle + 1;
             end if;
         end loop;
