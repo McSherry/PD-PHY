@@ -38,8 +38,8 @@ architecture Impl of Encoder4b5b_TB is
     -- Timing constants
     constant T          : time := 3.33 us;
 begin
-    -- 2 cycles
-    test_runner_watchdog(runner, 7 us);
+    -- 16 values, one cycle delay ---> 17 cycles
+    test_runner_watchdog(runner, 57 us);
     
     
     -- Stimulus and capture/compare.
@@ -81,8 +81,8 @@ begin
                 "0101" & "01101"    -- 5    EOP
             );
             
-        -- Index into test vector
         variable Index          : integer := 0;
+        variable NumCases       : integer;
     begin
         -- Test runner prerequisites
         test_runner_setup(runner, runner_cfg);
@@ -93,60 +93,62 @@ begin
             -- Tests that all the 'raw data' inputs produce the output
             -- given in USB-PD at s. 5.3.
             if run("data") then
+                NumCases := Vec_RawData'length / VL;
+            
                 -- Indicate input is data and enable writing
                 K   <= '0';
                 WE  <= '1';
             
-                while Index <= (Vec_RawData'length / VL) loop
-                    -- Because the encoding becomes available on the next
-                    -- cycle, we have to delay our checks a cycle and then
-                    -- test just before we get new output.
+                while Index <= NumCases loop
+                    -- Because there's a cycle delay between input and output,
+                    -- we don't want to assign on the last cycle because we'll
+                    -- produce a bounds violation.
+                    ARG <= Vec_RawData((Index * VL) to (Index * VL) + 3)
+                            when Index < NumCases;
+                            
+                    wait until rising_edge(CLK);
+                    
+                    -- Output will be invalid on the first cycle because there
+                    -- will have been no starting input, so we delay our checks
+                    -- by a cycle to match unit behaviour.
                     if Index /= 0 then
                         check_equal(
                             Q, Vec_RawData(((Index - 1) * VL) + 4 to ((Index - 1) * VL) + (VL - 1))
                             );
-                            
-                        -- This also means we have to perform a check after we've
-                        -- run out of valid data, so we have to force-exit the loop
-                        -- to avoid a bounds violation.
-                        if Index = (Vec_RawData'length / VL) then
-                            exit;
-                        end if;
                     end if;
-                
-                    ARG <= Vec_RawData((Index * VL) to (Index * VL) + 3);
-                    wait until rising_edge(CLK);
                         
                     Index := Index + 1;
                 end loop;
                 
                 WE <= '0';
             
+            
             -- Tests that all valid K-code inputs produce the expected
             -- outputs given in USB-PD at s. 5.3.
             elsif run("k_codes") then
+                NumCases := Vec_Kcodes'length / VL;
+            
                 -- We're writing a K-code
                 K   <= '1';
                 WE  <= '1';
                 
-                while Index < (Vec_Kcodes'length / VL) loop
+                while Index <= NumCases loop
+                    ARG <= Vec_Kcodes((Index * VL) to (Index * VL) + 3)
+                            when Index < NumCases;
+                            
+                    wait until rising_edge(CLK);                    
+                    
                     if Index /= 0 then
                         check_equal(
                             Q, Vec_Kcodes(((Index - 1) * VL) + 4 to ((Index - 1) * VL) + (VL - 1))
                             );
-                        
-                        if Index = (Vec_Kcodes'length / VL) then
-                            exit;
-                        end if;
                     end if;
-                
-                    ARG <= Vec_Kcodes((Index * VL) to (Index * VL) + 3);
-                    wait until rising_edge(CLK);
                     
                     Index := Index + 1;
                 end loop;
                 
                 WE <= '0';
+                
                 
             else
                 assert false report "Invalid test case" severity failure;
