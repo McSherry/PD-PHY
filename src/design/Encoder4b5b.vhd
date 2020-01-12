@@ -34,7 +34,7 @@ end Encoder4b5b;
 architecture Impl of Encoder4b5b is
     -- Lines providing encodings for both data and K-codes. We determine
     -- both simultaneously and simply mux them on each clock.
-    signal SymData, SymK    : std_logic_vector(4 downto 0);
+    signal SymData, SymK    : std_ulogic_vector(4 downto 0);
 begin
     mux: process(CLK)
     begin
