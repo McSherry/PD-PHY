@@ -148,6 +148,22 @@ begin
                 end loop;
                 
                 WE <= '0';
+            
+            
+            -- Tests that the expected output is still produced even if the
+            -- write-enable signal goes low before it appears on Q.
+            elsif run("clock_after_we_low") then
+                wait until rising_edge(CLK);
+            
+                K   <= '0';
+                WE  <= '1';
+                ARG <= "1111";
+                wait until rising_edge(CLK);
+                
+                WE  <= '0';
+                wait until rising_edge(CLK);
+                
+                check_equal(to_string(Q), "11101");
                 
                 
             else
