@@ -16,12 +16,12 @@ context vunit_lib.vunit_context;
 -- manner expected.
 --
 -- Tests of basic functionality are in './BiphaseMarkTx_Single_TB.vhd'.
-entity BiphaseMarkTx_Multi_TB is
+entity BiphaseMarkDriver_Multi_TB is
     generic(runner_cfg  : string := runner_cfg_default);
-end BiphaseMarkTx_Multi_TB;
+end BiphaseMarkDriver_Multi_TB;
 
-architecture Impl of BiphaseMarkTx_Multi_TB is
-    component BiphaseMarkTx port(
+architecture Impl of BiphaseMarkDriver_Multi_TB is
+    component BiphaseMarkDriver port(
         CLK     : in    std_logic;
         D       : in    std_logic;
         WE      : in    std_logic;
@@ -233,7 +233,7 @@ begin
     end process;
 
     
-    UUT: BiphaseMarkTx port map(
+    UUT: BiphaseMarkDriver port map(
         CLK => CLK,
         D   => D,
         WE  => WE,

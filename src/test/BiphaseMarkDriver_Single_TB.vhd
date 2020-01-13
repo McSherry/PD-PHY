@@ -17,13 +17,13 @@ context vunit_lib.vunit_context;
 -- These are the basic functionality tests for the BMC transmitter, and are
 -- supplemented by './BiphaseMarkTx_Multi_TB.vhd' which tests that multiple
 -- transmissions can be performed.
-entity BiphaseMarkTx_Single_TB is
+entity BiphaseMarkDriver_Single_TB is
     generic(runner_cfg : string := runner_cfg_default);
-end BiphaseMarkTx_Single_TB;
+end BiphaseMarkDriver_Single_TB;
 
 
-architecture Impl of BiphaseMarkTx_Single_TB is
-    component BiphaseMarkTx port(
+architecture Impl of BiphaseMarkDriver_Single_TB is
+    component BiphaseMarkDriver port(
         CLK     : in    std_logic;
         D       : in    std_logic;
         WE      : in    std_logic;
@@ -278,7 +278,7 @@ begin
     end process;
     
     
-    UUT: BiphaseMarkTx port map(
+    UUT: BiphaseMarkDriver port map(
         CLK => CLK,
         D   => D,
         WE  => WE,

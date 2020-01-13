@@ -10,7 +10,7 @@ use IEEE.std_logic_1164.all;
 
 -- Provides a biphase mark code (BMC) transmitter which complies with the
 -- requirements of BS EN IEC 62680-1-2 (USB Power Delivery).
-entity BiphaseMarkTx is
+entity BiphaseMarkDriver is
 port(
     -- Data clock
     --      Expects input at half the output frequency and 50% duty.
@@ -30,9 +30,9 @@ port(
     --      output on [Q] is undefined.
     OE      : out   std_ulogic  := '0'
     );
-end BiphaseMarkTx;
+end BiphaseMarkDriver;
 
-architecture Impl of BiphaseMarkTx is        
+architecture Impl of BiphaseMarkDriver is        
     -- Outputs from each logic branch
     --
     -- The transmitter uses dual-edged logic to double the clock rate, and

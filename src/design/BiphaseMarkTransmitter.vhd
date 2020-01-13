@@ -15,7 +15,7 @@ use IEEE.std_logic_1164.all;
 --      ./BiphaseMarkTx.vhd
 --      ./PDPreambleGen.vhd
 --      ./Encoder4b5b.vhd
-entity BiphaseMarkCU is
+entity BiphaseMarkTransmitter is
 port(
     -- Wishbone clock
     --      The clock used by the Wishbone bus, equivalent to 'CLK_I' in the
@@ -45,14 +45,11 @@ port(
     -- Wishbone acknowledge output
     WB_ACK_O    : in    std_logic;
     -- Wishbone error output
-    WB_ERR_O    : in    std_logic;
-    
-    -- Other signals to be added later, initial development effort will be on
-    -- ensuring that the Wishbone interface is functional.
+    WB_ERR_O    : in    std_logic
     );
-end BiphaseMarkCU;
+end BiphaseMarkTransmitter;
 
-architecture Impl of BiphaseMarkCU is
+architecture Impl of BiphaseMarkTransmitter is
 begin
-    -- ...
+
 end;
