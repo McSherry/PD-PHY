@@ -12,7 +12,7 @@ use IEEE.std_logic_1164.all;
 -- required to operate a biphase mark code transmitter.
 --
 -- Related:
---      ./BiphaseMarkTx.vhd
+--      ./BiphaseMarkDriver.vhd
 --      ./PDPreambleGen.vhd
 --      ./Encoder4b5b.vhd
 entity BiphaseMarkTransmitter is
