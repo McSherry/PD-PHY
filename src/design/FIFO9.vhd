@@ -38,6 +38,8 @@ port(
     RREQ    : in    std_logic;
     -- Data output
     DO      : out   std_ulogic_vector(8 downto 0);
+    -- FIFO empty status indicator
+    EMPTY   : out   std_ulogic;
     -- Read error
     --      Asserted when an attempt is made to read from the FIFO while the
     --      FIFO is empty.
