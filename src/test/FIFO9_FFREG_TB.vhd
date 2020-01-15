@@ -252,6 +252,32 @@ begin
                 
                 Enable_WRCLK    <= '0';
                 Enable_RDCLK    <= '0';
+            
+            
+            -- ##########
+            --
+            -- Loads a single value into the FIFO and resets it, testing that the
+            -- FIFO is cleared in the manner expected.
+            elsif run("reset_basic") then
+                Enable_WRCLK    <= '1';
+                WREQ            <= '1';
+                DI              <= "101010101"; -- 155h
+                
+                wait until rising_edge(WRCLK);
+                
+                WREQ    <= '0';
+                RST     <= '1';
+                
+                check_equal(EMPTY, '0', "Basic reset, pre-signal: EMPTY");
+                
+                -- The time for a reset to take effect is indeterminate, so we
+                -- have to wait for the FIFO to indicate it is empty.
+                wait until not EMPTY;
+                
+                -- There isn't really anything to test. Nothing externally
+                -- indicates that the FIFO has returned to its initial state.
+                
+                Enable_WRCLK    <= '0';
             end if;
         
         end loop;
