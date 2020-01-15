@@ -65,6 +65,10 @@ architecture Impl of FIFO9_FFREG_TB is
     -- The number of writes the 'basic_cycle' test should carry out.
     constant BC_Count   : integer := 40;
 begin
+    -- Main tests are unlikely take more than tens of read-clock cycles.
+    test_runner_watchdog(runner, T_Read * 20);
+
+
     -- This process produces the general stimulus for the test and controls the
     -- other processes which produce stimulus, where required.
     master: process
@@ -227,9 +231,20 @@ begin
             -- capacity is unspecified, we intend that FFREG will only hold 16
             -- items and so this should be enough to fill it.
             elsif run("basic_cycle") then
+                -- We need to take care of at least 40 (BC_Count) read cycles
+                -- as well as however long the indeterminate time taken for the
+                -- FIFO to release the status flags is. We'll assume a maximum
+                -- of five cycles for now, this being the maximum for the hard
+                -- block-RAM FIFO.
+                set_timeout(runner, T_Read * (BC_Count + (5 * BC_Count)));
+            
                 -- Enable the clocks
                 Enable_WRCLK    <= '1';
                 Enable_RDCLK    <= '1';
+                
+                -- Ensure we aren't driving DI, allowing our other processes to
+                -- drive it for us.
+                DI              <= (others => 'Z');
                 
                 -- The read/write logic is in two separate processes. Here, we
                 -- just wait for each process to signal completion.
