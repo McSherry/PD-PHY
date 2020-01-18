@@ -40,8 +40,8 @@ architecture Impl of FIFO9_FFREG_TB is
     end component;
     
     -- FIFO9 signals
-    signal WRCLK, WREQ, RDCLK, RREQ, RST    : std_logic := '0';
-    signal DI                               : std_logic_vector(8 downto 0) := "000000000";
+    signal WRCLK, WREQ, RDCLK, RREQ, RST    : std_ulogic := '0';
+    signal DI                               : std_ulogic_vector(8 downto 0);
     signal FULL, FILLING, WERR, EMPTY, RERR : std_ulogic;
     signal DO                               : std_ulogic_vector(8 downto 0);
     
@@ -66,7 +66,7 @@ architecture Impl of FIFO9_FFREG_TB is
     constant BC_Count   : integer := 40;
 begin
     -- Main tests are unlikely take more than tens of read-clock cycles.
-    test_runner_watchdog(runner, T_Read * 20);
+    test_runner_watchdog(runner, T_Read * 80);
 
 
     -- This process produces the general stimulus for the test and controls the
@@ -101,20 +101,35 @@ begin
                 
                 wait until rising_edge(WRCLK);
                 
-                -- Clear inputs
-                Enable_WRCLK    <= '0';
+                -- Clear input
                 WREQ            <= '0';
+                
+                -- Wait to propagate
+                wait until rising_edge(WRCLK);
+                
+                Enable_WRCLK    <= '0';
                 
                 -- Status check
                 check_equal(FULL,       '0',    "First write: FULL");
                 check_equal(FILLING,    '0',    "First write: FILLING");
-                check_equal(EMPTY,      '0',    "First write: EMPTY");
                 check_equal(WERR,       '0',    "First write: WERR");
+                
+                -- EMPTY is synchronised to RDCLK, so we need to wait for it. A
+                -- signal has to pass across clock domains twice, so it will
+                -- take four cycles (two per synchroniser, twice) to update.
+                Enable_RDCLK    <= '1';
+                wait until rising_edge(RDCLK);
+                wait until rising_edge(RDCLK);
+                wait until rising_edge(RDCLK);
+                wait until rising_edge(RDCLK);
+                Enable_RDCLK    <= '0';
+                check_equal(EMPTY,      '0',    "First write: EMPTY");
                 
                 --Set up read
                 Enable_RDCLK    <= '1';
                 RREQ            <= '1';
                 
+                wait until rising_edge(RDCLK);
                 wait until rising_edge(RDCLK);
                 
                 -- Clear inputs
@@ -122,11 +137,16 @@ begin
                 RREQ            <= '0';
                 
                 -- Output check
-                check_equal(std_ulogic_vector'("111111001"), DO, "First read: DO");
+                check_equal(DO, std_ulogic_vector'("111111001"), "First read: DO");
                 check_equal(FULL,       '0',    "First read: FULL");
                 check_equal(FILLING,    '0',    "First read: FILLING");
-                check_equal(EMPTY,      '1',    "First read: EMPTY");
                 check_equal(RERR,       '0',    "First read: RERR");
+                
+                -- Again, EMPTY is synchronised to RDCLK.
+                Enable_RDCLK    <= '1';
+                wait until rising_edge(RDCLK);
+                check_equal(EMPTY,      '1',    "First read: EMPTY");
+                Enable_RDCLK    <= '0';
                 
             
             -- ##########
@@ -245,6 +265,9 @@ begin
                 -- Ensure we aren't driving DI, allowing our other processes to
                 -- drive it for us.
                 DI              <= (others => 'Z');
+                WREQ            <= 'Z';
+                RREQ            <= 'Z';
+                RST             <= 'Z';
                 
                 -- The read/write logic is in two separate processes. Here, we
                 -- just wait for each process to signal completion.
@@ -297,29 +320,36 @@ begin
     basic_cycle_write: process
         variable Cycle : integer := 0;
     begin
-        while Cycle < BC_Count loop
-            -- We should never prompt a write error while doing this.
-            check_equal(WERR, '0', "Basic cycle, write: WERR");
-        
-            -- We simply keep writing until we fill the FIFO.
-            if not FULL then
-                -- We write a value equivalent to the cycle number each time.
-                WREQ <= '1';
-                DI   <= std_logic_vector(to_unsigned(Cycle, 9));
+        -- if running_test_case = "basic_cycle" then
+            -- while Cycle < BC_Count loop
+                -- -- We should never prompt a write error while doing this.
+                -- check_equal(WERR, '0', "Basic cycle, write: WERR");
+            
+                -- -- We simply keep writing until we fill the FIFO.
+                -- if not FULL then
+                    -- -- We write a value equivalent to the cycle number each time.
+                    -- WREQ <= '1';
+                    -- DI   <= std_logic_vector(to_unsigned(Cycle, 9));
+                    
+                    -- wait until rising_edge(WRCLK);
+                -- else
+                    -- WREQ <= '0';
+                -- end if;
                 
-                wait until rising_edge(WRCLK);
-            else
-                WREQ <= '0';
-            end if;
-            
-            Cycle := Cycle + 1;
-            
-            -- If the FIFO is full but we haven't finished, wait until it is no
-            -- longer full before we continue to write.
-            if FULL then
-                wait until not FULL;
-            end if;
-        end loop;
+                -- Cycle := Cycle + 1;
+                
+                -- -- If the FIFO is full but we haven't finished, wait until it is no
+                -- -- longer full before we continue to write.
+                -- if FULL then
+                    -- wait until not FULL;
+                -- end if;
+            -- end loop;
+        -- else
+            -- DI <= (others => 'Z');
+            -- WREQ <= 'Z';
+            -- RREQ <= 'Z';
+            -- RST <= 'Z';
+        -- end if;
         
         wait;
     end process;
@@ -327,29 +357,34 @@ begin
     basic_cycle_read: process
         variable Count : integer := 0;
     begin
-        -- Rather than count cycles as in the writing process, here we count
-        -- number of items we've read out the FIFO. Basically the same, though.
-        while Count /= BC_Count - 1 loop
-            check_equal('0', RERR,  "Basic cycle, read: RERR");
-        
-            if not EMPTY then
-                RREQ <= '1';
-                
-                wait until rising_edge(RDCLK);
-                
-                -- The value we read out the FIFO should equal the number of
-                -- values we've already read out, as tracked by our count.
-                check_equal(DO, std_logic_vector(to_unsigned(Count, 9)), "Basic cycle, read: Count");
-                
-                Count := Count + 1;
-            else
-                RREQ <= '0';
-            end if;
+        -- if running_test_case = "basic_cycle" then
+            -- -- Rather than count cycles as in the writing process, here we count
+            -- -- number of items we've read out the FIFO. Basically the same, though.
+            -- while Count /= BC_Count - 1 loop
+                -- check_equal('0', RERR,  "Basic cycle, read: RERR");
             
-            if EMPTY then
-                wait until not EMPTY;
-            end if;
-        end loop;
+                -- if not EMPTY then
+                    -- RREQ <= '1';
+                    
+                    -- wait until rising_edge(RDCLK);
+                    
+                    -- -- The value we read out the FIFO should equal the number of
+                    -- -- values we've already read out, as tracked by our count.
+                    -- check_equal(DO, std_logic_vector(to_unsigned(Count, 9)), "Basic cycle, read: Count");
+                    
+                    -- Count := Count + 1;
+                -- else
+                    -- RREQ <= '0';
+                -- end if;
+                
+                -- if EMPTY then
+                    -- wait until not EMPTY;
+                -- end if;
+            -- end loop;
+        -- else
+            -- RREQ            <= 'Z';
+            -- RST             <= 'Z';
+        -- end if;
         
         wait;
     end process;
