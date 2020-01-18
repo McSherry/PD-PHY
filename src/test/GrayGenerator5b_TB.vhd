@@ -83,9 +83,18 @@ begin
                     -- a low XOR-out for the first halves of each 16, and a
                     -- high XOR-out for the second halves.
                     if (Cycle < 7) or (Cycle >= 15 and Cycle < 23) then
-                        check_equal(Q(4) xor Q(3), '0', "MSB check, low");
+                        check_equal(Q(4) xor Q(3), '0', "MSB XOR, low");
                     else
-                        check_equal(Q(4) xor Q(3), '1', "MSB check, high ");
+                        check_equal(Q(4) xor Q(3), '1', "MSB XOR, high ");
+                    end if;
+                    
+                    -- We also want to encode whether the 16 addresses have
+                    -- wrapped around, which we do by ensuring that the MSB is
+                    -- only high for the latter 16 codes of 32.
+                    if Cycle < 15 then
+                        check_equal(Q(4), '0', "MSB check, low");
+                    else
+                        check_equal(Q(4), '1', "MSB check, high");
                     end if;
                     
                     QHeld := Q;
