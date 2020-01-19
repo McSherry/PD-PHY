@@ -23,7 +23,7 @@ port(
     
     -- Data output
     --      Provides the generated Gray codes.
-    Q       : out   std_ulogic_vector(4 downto 0)
+    Q       : out   std_ulogic_vector(4 downto 0) := "00000"
     );
 end GrayGenerator5b;
 
