@@ -18,7 +18,7 @@ entity CD2FF is
         -- The width of the flip-flop array, in bits.
         W       : positive := 1;
         -- The default state of the output flip-flops.
-        DEFAULT : std_ulogic_vector((W - 1) downto 0) := (others => '0')
+        INITIAL : std_ulogic_vector((W - 1) downto 0) := (others => '0')
     );
     port(
         -- Clock
@@ -32,13 +32,13 @@ entity CD2FF is
         -- Data output
         --      The data output, which reflects the input data but is
         --      synchronised to [CLK].
-        Q       : out   std_ulogic_vector((W - 1) downto 0) := DEFAULT
+        Q       : out   std_ulogic_vector((W - 1) downto 0) := INITIAL
         );
 end CD2FF;
 
 
 architecture Impl of CD2FF is
-    signal FF_Intermed  : std_ulogic_vector((W - 1) downto 0) := DEFAULT;
+    signal FF_Intermed  : std_ulogic_vector((W - 1) downto 0) := INITIAL;
 begin
 
     process(CLK)

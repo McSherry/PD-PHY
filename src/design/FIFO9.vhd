@@ -67,7 +67,7 @@ architecture FFREG of FIFO9 is
     component CD2FF
         generic(
             W       : integer;
-            DEFAULT : std_ulogic_vector((W - 1) downto 0)
+            INITIAL : std_ulogic_vector((W - 1) downto 0)
             );
         port(
             CLK     : in    std_logic;
@@ -321,7 +321,7 @@ begin
         
     -- Write-domain synchroniser for the read pointer
     Sync_WS_RPtr_Next: CD2FF
-        generic map(W => 5, DEFAULT => (others => '0'))
+        generic map(W => 5, INITIAL => (others => '0'))
         port map(
             CLK => WRCLK,
             D   => RPtr_Next,
@@ -330,7 +330,7 @@ begin
             
     -- Write-domain synchroniser for the read-wrapped signal
     Sync_WS_R_Wrapped: CD2FF
-        generic map(W => 1, DEFAULT => (others => '0'))
+        generic map(W => 1, INITIAL => (others => '0'))
         port map(
             CLK  => WRCLK,
             D(0) => R_Wrapped,
@@ -339,7 +339,7 @@ begin
         
     -- Read-domain synchroniser for the reset signal
     Sync_RS_WPtr_Reset: CD2FF
-        generic map(W => 1, DEFAULT => (others => '0'))
+        generic map(W => 1, INITIAL => (others => '0'))
         port map(
             CLK  => RDCLK,
             D(0) => RST,
@@ -348,7 +348,7 @@ begin
             
     -- Read-domain synchroniser for the write pointer
     Sync_RS_WPtr_Next: CD2FF
-        generic map(W => 5, DEFAULT => (others => '0'))
+        generic map(W => 5, INITIAL => (others => '0'))
         port map(
             CLK => RDCLK,
             D   => WPtr_Next,
