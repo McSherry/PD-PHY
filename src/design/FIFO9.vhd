@@ -7,7 +7,6 @@
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
-use IEEE.math_real.all;
 
 
 -- Provides an asynchronous first-in first-out (FIFO) buffer which stores 9-bit
@@ -85,6 +84,15 @@ architecture FFREG of FIFO9 is
         Q       : out   std_ulogic_vector(4 downto 0)
         );
     end component;
+    
+    -- Gray code to binary conversion
+    component GrayDecoder
+        generic(W   : positive);
+        port(
+            D       : in    std_logic_vector((W - 1) downto 0);
+            Q       : out   std_ulogic_vector((W - 1) downto 0)
+            );
+    end component;
 
 
     -- The size of the words stored by the FIFO, in bits.
@@ -98,16 +106,24 @@ architecture FFREG of FIFO9 is
     -- Write-domain signals
     --
     -- The pointer to the next location in the FIFO to be written to.
-    signal WPtr_Next    : std_ulogic_vector(4 downto 0);
+    signal WPtr_Next        : std_ulogic_vector(4 downto 0);
     -- A signal, connected to the address generator, which indicates whether
     -- the next write address is to be generated.
-    signal WPtr_Gen     : std_ulogic := '0';
+    signal WPtr_Gen         : std_ulogic := '0';
     -- A synchronised version of the read pointer 'RPtr_Next'.
-    signal WS_RPtr_Next : std_ulogic_vector(4 downto 0);
+    signal WS_RPtr_Next     : std_ulogic_vector(4 downto 0) := "00000";
     -- Whether the write pointer has wrapped around; alternates with each wrap.
-    signal W_Wrapped    : std_ulogic;
+    signal W_Wrapped        : std_ulogic;
     -- A synchronised version of the 'R_Wrapped' signal.
-    signal WS_R_Wrapped : std_ulogic;
+    signal WS_R_Wrapped     : std_ulogic := '0';
+    -- The most significant bit of the 4-bit addresses represented by the write
+    -- pointer and the synchronised read pointer.
+    signal WPtr_AddrMSB     : std_ulogic;
+    signal WS_RPtr_AddrMSB  : std_ulogic := '0';
+    -- The 4-bit binary-coded address represented by the write pointer and the
+    -- synchronised read pointer.
+    signal WPtr_Binary      : std_ulogic_vector(3 downto 0);
+    signal WS_RPtr_Binary   : std_ulogic_vector(3 downto 0);
     
     -- Read-domain signals
     --
@@ -125,9 +141,11 @@ architecture FFREG of FIFO9 is
     signal R_Wrapped    : std_ulogic;
     
 begin
+
     -- This process provides clocked write-domain functionality.
     write_domain: process(WRCLK)
         variable ADDRESS    : integer;
+        variable DIFF       : unsigned(3 downto 0);
     begin
         if rising_edge(WRCLK) then
             -- If we're full and receive a write request, that's an error.
@@ -147,12 +165,54 @@ begin
                     ));
                     
                 RAM(ADDRESS + WordSize - 1 downto ADDRESS) <= DI;
+                
+                
+                -- As the pointers can wrap around and overflow, we want the
+                -- absolute difference when determining whether FILLING is to
+                -- be asserted, and so we always want to subtract the smaller
+                -- value from the greater. This means the means of detecting
+                -- also changed based on which is larger.
+                --
+                -- If the write pointer was larger, the difference we took
+                -- was the distance by which the write pointer leads the read
+                -- pointer, and so the expected method of comparing against
+                -- capacity can be applied.
+                --
+                -- However, if the read pointer was larger, the difference is
+                -- instead the number of free (unused) spaces in the FIFO, and
+                -- so the logic is inverted: we have to check that free space
+                -- is half our capacity or less (rather than checking that used
+                -- space is half or more).
+                
+                -- We know that, conceptually, the write pointer will always
+                -- be ahead of the read pointer. If the wraparound state of
+                -- the two pointers is the same, then, the write pointer will
+                -- always be greater or equal.
+                if (W_Wrapped xnor WS_R_Wrapped) then
+                    DIFF := unsigned(WPtr_Binary) - unsigned(WS_RPtr_Binary);
+                    FILLING <= '1' when DIFF >= (Depth/2) else '0';
+                
+                -- On the other hand, when the wraparound states differ, we
+                -- know that the write pointer will have wrapped because it
+                -- always leads the read pointer. As the read pointer hasn't
+                -- wrapped, we know it will be larger.
+                else
+                    DIFF := unsigned(WS_RPtr_Binary) - unsigned(WPtr_Binary);
+                    FILLING <= '1' when DIFF <= (Depth/2) else '0';
+                end if;
             end if;
+            
+            
         end if;
     end process;
     
     -- The wrap indicator is encoded in the Gray code MSB.
     W_Wrapped <= WPtr_Next(4);
+    
+    -- To derive a 4-bit address from a 5-bit Gray code, the two MSBs must
+    -- be exclusive-OR'd together.
+    WPtr_AddrMSB <= WPtr_Next(4) xor WPtr_Next(3);
+    WS_RPtr_AddrMSB <= WS_RPtr_Next(4) xor WS_RPtr_Next(3);
     
     -- Detecting the 'full' condition is more complex. As Cummings sets
     -- out, there are three criteria to be fulfilled:
@@ -184,13 +244,11 @@ begin
     
     -- This process provides clocked read-domain functionality.
     read_domain: process(RDCLK)
-    
         variable ADDRESS    : integer;
     begin
         if rising_edge(RDCLK) then
-            
             -- The wrap indicator is encoded in the Gray code MSB.
-            R_Wrapped <= RPtr_Next(4);            
+            R_Wrapped <= RPtr_Next(4);
             
             -- If we receive a request to read and we aren't empty, service
             -- the request.
@@ -212,12 +270,12 @@ begin
     
     -- We're empty if the read and write pointers are equal, because this
     -- indicates that the read pointer has 'caught' the write pointer.
-    EMPTY <= '0' when RST = '1'                 else
+    EMPTY <= '0' when RS_RST = '1'              else
              '1' when RPtr_Next = RS_WPtr_Next  else
              '0';
 
     -- If we're empty and receive a read request, that's an error.
-    RERR <= '0' when RST = '1'      else
+    RERR <= '0' when RS_RST = '1'   else
             '1' when EMPTY and RREQ else
             '0';
     
@@ -233,6 +291,25 @@ begin
         Q       => WPtr_Next,
         RST     => RST
         );
+        
+    -- To-binary decoder for the write pointer
+    WPtrDecoder: GrayDecoder
+        generic map(W => 4)
+        port map(
+            D(3)            => WPtr_AddrMSB,
+            D(2 downto 0)   => WPtr_Next(2 downto 0),
+            Q               => WPtr_Binary
+            );
+            
+    -- To-binary decoder for the write-domain-synchronised read pointer
+    WS_RPtrDecoder: GrayDecoder
+        generic map(W => 4)
+        port map(
+            D(3)            => WS_RPtr_AddrMSB,
+            D(2 downto 0)   => WS_RPtr_Next(2 downto 0),
+            Q               => WS_RPtr_Binary
+            );
+    
         
     -- Gray code generator to produce the next value of the read pointer
     RPtrNextGen: GrayGenerator5b port map(

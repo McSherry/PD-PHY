@@ -215,7 +215,7 @@ begin
                 -- the 'FULL' signal from the FIFO.
                 wait until FULL = '1';
                 
-                -- check_equal(FILLING,    '1',    "Write to filled: FILLING");
+                check_equal(FILLING,    '1',    "Write to filled: FILLING");
                 check_equal(WERR,       '0',    "Write to filled: WERR");
 
                 -- Then, with 'WREQ' still asserted, we wait another write
@@ -224,7 +224,7 @@ begin
                 wait until rising_edge(WRCLK);
                 
                 check_equal(FULL,       '1',    "Write on full: FULL");
-                -- check_equal(FILLING,    '1',    "Write on full: FILLING");
+                check_equal(FILLING,    '1',    "Write on full: FILLING");
                 check_equal(WERR,       '1',    "Write on full: WERR");
                 
                 -- Similarly to the read-on-empty test, we check that the error
@@ -234,6 +234,7 @@ begin
                 Enable_WRCLK    <= '0';
                 
                 check_equal(WERR, '1', "Write on full: WERR, contd.");
+                check_equal(FILLING, '1', "Write on full: FILLING, contd.");
                 
                 -- And we then read an item from the FIFO to check that this
                 -- causes the error signal to be released.
@@ -261,6 +262,7 @@ begin
                 
                 check_equal(FULL, '0', "Unfilled: FULL");
                 check_equal(DO, std_ulogic_vector'("111000101"), "Unfilled: DO");
+                check_equal(FILLING, '1', "Unfilled: FILLING");
             
             
             -- ##########

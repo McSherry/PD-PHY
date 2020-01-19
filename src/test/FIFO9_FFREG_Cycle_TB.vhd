@@ -132,6 +132,13 @@ begin
             DI   <= std_logic_vector(to_unsigned(Cycle, 9));
             wait until rising_edge(WRCLK);
             
+            -- Because of how slow the read clock is in this test, once FILLING
+            -- becomes asserted (which it should do after the 8th write), it
+            -- should never be deasserted.
+            if Cycle > 8 then
+                check_equal(FILLING, '1', "Item " & to_string(Cycle) & ", write: FILLING");
+            end if;
+            
             -- We can only advance to the next cycle if we're going to be
             -- writing in that cycle, and we're only going to be writing if
             -- the FIFO isn't full. Avoiding this check leads to data being
@@ -139,7 +146,6 @@ begin
             if not FULL then
                 Cycle := Cycle + 1;
             end if;
-            
         end loop;
         
         -- Indicate that we've finished.
