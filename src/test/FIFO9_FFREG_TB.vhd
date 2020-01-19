@@ -130,11 +130,11 @@ begin
                 RREQ            <= '1';
                 
                 wait until rising_edge(RDCLK);
+                RREQ            <= '0';
                 wait until rising_edge(RDCLK);
                 
                 -- Clear inputs
                 Enable_RDCLK    <= '0';
-                RREQ            <= '0';
                 
                 -- Output check
                 check_equal(DO, std_ulogic_vector'("111111001"), "First read: DO");
@@ -157,6 +157,8 @@ begin
                 Enable_RDCLK    <= '1';
                 RREQ            <= '1';
                 
+                -- One clock to register inputs, one to generate output.
+                wait until rising_edge(RDCLK);
                 wait until rising_edge(RDCLK);
                 
                 -- First we verify that an error is indicated
@@ -164,17 +166,20 @@ begin
                 check_equal(EMPTY,  '1',    "Read on empty: EMPTY");
                 
                 wait until rising_edge(RDCLK);
+                wait until rising_edge(RDCLK);
                 
                 Enable_RDCLK    <= '0';
                 
                 -- That the error persists while the FIFO is empty.
-                check_equal('1', RERR,      "Read on empty: RERR, contd.");
+                check_equal(RERR, '1', "Read on empty: RERR, contd.");
                 
                 -- And, next, that the error disappears on a write to the FIFO.
                 Enable_WRCLK    <= '1';
                 WREQ            <= '1';
                 DI              <= "0" & "1000" & "1111"; -- 08Fh
                 
+                wait until rising_edge(WRCLK);
+                WREQ <= '0';
                 wait until rising_edge(WRCLK);
                 
                 Enable_WRCLK    <= '0';
@@ -188,10 +193,20 @@ begin
                 -- test remains safe even with an indeterminate wait.
                 wait until RERR = '0';
                 
-                Enable_RDCLK    <= '0';
+                -- We've now written to the FIFO, so it isn't empty.
+                check_equal(EMPTY, '0', "Refilled: EMPTY");
                 
-                check_equal(EMPTY, '1', "Refilled: EMPTY");
-                check_equal(DO, std_ulogic_vector'("010001111"), "Refilled: DO");
+                -- And if we try to read, we should now get the value written
+                -- above on the output.
+                RREQ <= '1';
+                wait until rising_edge(RDCLK);
+                RREQ <= '0';
+                wait until rising_edge(RDCLK);
+                
+                Enable_RDCLK <= '0';
+                
+                check_equal(EMPTY, '1', "Read after refill: EMPTY");
+                check_equal(DO, std_ulogic_vector'("010001111"), "Read after refill: DO");
                
                
             -- ##########
