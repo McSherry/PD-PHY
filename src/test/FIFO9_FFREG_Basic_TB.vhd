@@ -12,15 +12,15 @@ library vunit_lib;
 context vunit_lib.vunit_context;
 
 
--- Provides tests for the FIFO9 entity's FFREG architecture.
+-- Provides basic tests for the FIFO9 entity's FFREG architecture.
 --
 -- It is likely that, when the XBRAM architecture is implemented, many of
 -- these tests will be suitable for relocation into a generalised testbench.
-entity FIFO9_FFREG_TB is
+entity FIFO9_FFREG_Basic_TB is
     generic(runner_cfg : string := runner_cfg_default);
-end FIFO9_FFREG_TB;
+end FIFO9_FFREG_Basic_TB;
 
-architecture Impl of FIFO9_FFREG_TB is
+architecture Impl of FIFO9_FFREG_Basic_TB is
     component FIFO9 port(
         WRCLK   : in    std_logic;
         WREQ    : in    std_logic;
@@ -50,9 +50,6 @@ architecture Impl of FIFO9_FFREG_TB is
     -- Signals indicating to clock-generating processes whether they should
     -- be cycling or not.
     signal Enable_WRCLK, Enable_RDCLK       : std_logic := '0';
-    -- Status signals used in running a full cycle of operations on the FIFO,
-    -- set to indicate that *W*rite and *R*ead processes have completed.
-    signal Stim_Cycle_W, Stim_Cycle_R       : std_logic := '0';
     
     -- Test timing constants
     --
@@ -60,10 +57,6 @@ architecture Impl of FIFO9_FFREG_TB is
     constant T_Write    : time := 100 ns;   -- 10MHz
     constant T_Read     : time := 3 us;     -- 300kHz
     
-    -- Test configuration constants
-    --
-    -- The number of writes the 'basic_cycle' test should carry out.
-    constant BC_Count   : integer := 40;
 begin
     -- Main tests are unlikely take more than tens of read-clock cycles.
     test_runner_watchdog(runner, T_Read * 80);
@@ -228,6 +221,7 @@ begin
                 -- Then, with 'WREQ' still asserted, we wait another write
                 -- cycle, which should prompt a write error.
                 wait until rising_edge(WRCLK);
+                wait until rising_edge(WRCLK);
                 
                 check_equal(FULL,       '1',    "Write on full: FULL");
                 -- check_equal(FILLING,    '1',    "Write on full: FILLING");
@@ -267,39 +261,6 @@ begin
                 
                 check_equal(FULL, '0', "Unfilled: FULL");
                 check_equal(DO, std_ulogic_vector'("111000101"), "Unfilled: DO");
-                
-                
-            -- ##########
-            --
-            -- Performs a full cycle of 40 writes and reads carried out at the
-            -- same time with two independent clocks. Although technically FIFO
-            -- capacity is unspecified, we intend that FFREG will only hold 16
-            -- items and so this should be enough to fill it.
-            elsif run("basic_cycle") then
-                -- We need to take care of at least 40 (BC_Count) read cycles
-                -- as well as however long the indeterminate time taken for the
-                -- FIFO to release the status flags is. We'll assume a maximum
-                -- of five cycles for now, this being the maximum for the hard
-                -- block-RAM FIFO.
-                set_timeout(runner, T_Read * (BC_Count + (5 * BC_Count)));
-            
-                -- Enable the clocks
-                Enable_WRCLK    <= '1';
-                Enable_RDCLK    <= '1';
-                
-                -- Ensure we aren't driving DI, allowing our other processes to
-                -- drive it for us.
-                DI              <= (others => 'Z');
-                WREQ            <= 'Z';
-                RREQ            <= 'Z';
-                RST             <= 'Z';
-                
-                -- The read/write logic is in two separate processes. Here, we
-                -- just wait for each process to signal completion.
-                wait until Stim_Cycle_W and Stim_Cycle_R;
-                
-                Enable_WRCLK    <= '0';
-                Enable_RDCLK    <= '0';
             
             
             -- ##########
@@ -341,87 +302,6 @@ begin
         end loop;
         
         test_runner_cleanup(runner);
-    end process;
-    
-    
-    -- Stimulus processes for the 'basic_cycle' test
-    --
-    -- The write process produces 40 writes (which should fill the FIFO) and
-    -- the read process gradually reads those values out. The number 40 was
-    -- chosen because this should be long enough to more than cover a rising
-    -- edge of the slow RDCLK.
-    --
-    -- Write process:
-    basic_cycle_write: process
-        variable Cycle : integer := 0;
-    begin
-        -- if running_test_case = "basic_cycle" then
-            -- while Cycle < BC_Count loop
-                -- -- We should never prompt a write error while doing this.
-                -- check_equal(WERR, '0', "Basic cycle, write: WERR");
-            
-                -- -- We simply keep writing until we fill the FIFO.
-                -- if not FULL then
-                    -- -- We write a value equivalent to the cycle number each time.
-                    -- WREQ <= '1';
-                    -- DI   <= std_logic_vector(to_unsigned(Cycle, 9));
-                    
-                    -- wait until rising_edge(WRCLK);
-                -- else
-                    -- WREQ <= '0';
-                -- end if;
-                
-                -- Cycle := Cycle + 1;
-                
-                -- -- If the FIFO is full but we haven't finished, wait until it is no
-                -- -- longer full before we continue to write.
-                -- if FULL then
-                    -- wait until not FULL;
-                -- end if;
-            -- end loop;
-        -- else
-            -- DI <= (others => 'Z');
-            -- WREQ <= 'Z';
-            -- RREQ <= 'Z';
-            -- RST <= 'Z';
-        -- end if;
-        
-        wait;
-    end process;
-    -- Read process:
-    basic_cycle_read: process
-        variable Count : integer := 0;
-    begin
-        -- if running_test_case = "basic_cycle" then
-            -- -- Rather than count cycles as in the writing process, here we count
-            -- -- number of items we've read out the FIFO. Basically the same, though.
-            -- while Count /= BC_Count - 1 loop
-                -- check_equal('0', RERR,  "Basic cycle, read: RERR");
-            
-                -- if not EMPTY then
-                    -- RREQ <= '1';
-                    
-                    -- wait until rising_edge(RDCLK);
-                    
-                    -- -- The value we read out the FIFO should equal the number of
-                    -- -- values we've already read out, as tracked by our count.
-                    -- check_equal(DO, std_logic_vector(to_unsigned(Count, 9)), "Basic cycle, read: Count");
-                    
-                    -- Count := Count + 1;
-                -- else
-                    -- RREQ <= '0';
-                -- end if;
-                
-                -- if EMPTY then
-                    -- wait until not EMPTY;
-                -- end if;
-            -- end loop;
-        -- else
-            -- RREQ            <= 'Z';
-            -- RST             <= 'Z';
-        -- end if;
-        
-        wait;
     end process;
     
     
