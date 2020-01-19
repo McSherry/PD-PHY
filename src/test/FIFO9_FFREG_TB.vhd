@@ -311,21 +311,31 @@ begin
                 WREQ            <= '1';
                 DI              <= "101010101"; -- 155h
                 
+                -- Make the write
                 wait until rising_edge(WRCLK);
                 
+                -- Trigger reset
                 WREQ    <= '0';
                 RST     <= '1';
                 
-                check_equal(EMPTY, '0', "Basic reset, pre-signal: EMPTY");
+                -- EMPTY signal should remain high until the reset has effect.
+                check_equal(EMPTY, '1', "Basic reset, pre-signal: EMPTY");
+                
+                -- As the EMPTY signal is controlled by the read domain, we have
+                -- to begin clocking it before we wait.
+                Enable_RDCLK    <= '1';
                 
                 -- The time for a reset to take effect is indeterminate, so we
                 -- have to wait for the FIFO to indicate it is empty.
-                wait until not EMPTY;
+                wait until EMPTY = '0';
+                
+                info("EMPTY deasserted");
                 
                 -- There isn't really anything to test. Nothing externally
                 -- indicates that the FIFO has returned to its initial state.
                 
                 Enable_WRCLK    <= '0';
+                Enable_RDCLK    <= '0';
             end if;
         
         end loop;
