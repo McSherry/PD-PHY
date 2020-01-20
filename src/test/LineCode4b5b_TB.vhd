@@ -12,12 +12,12 @@ library vunit_lib;
 context vunit_lib.vunit_context;
 
 
--- Provides tests for the USB-PD 4b5b encoder.
-entity Encoder4b5b_TB is
+-- Provides tests for the USB-PD 4b5b encoder and decoder.
+entity LineCode4b5b_TB is
     generic(runner_cfg : string := runner_cfg_default);
-end Encoder4b5b_TB;
+end LineCode4b5b_TB;
 
-architecture Impl of Encoder4b5b_TB is
+architecture Impl of LineCode4b5b_TB is
     component Encoder4b5b port(
         CLK     : in    std_logic;
         WE      : in    std_logic;
@@ -27,10 +27,28 @@ architecture Impl of Encoder4b5b_TB is
         );
     end component;
     
+    component Decoder4b5b port(
+        CLK     : in    std_logic;
+        WE      : in    std_logic;
+        ARG     : in    std_logic_vector(4 downto 0);
+        Q       : out   std_ulogic_vector(3 downto 0);
+        K       : out   std_ulogic
+        );
+    end component;
+    
+    -- Common signals
+    signal CLK          : std_logic := '0';
+    
     -- Encoder signals
-    signal CLK, WE, K   : std_logic := '0';
-    signal ARG          : std_logic_vector(3 downto 0) := "0000";
-    signal Q            : std_ulogic_vector(4 downto 0);
+    signal E_WE, E_K    : std_logic := '0';
+    signal E_ARG        : std_logic_vector(3 downto 0) := "0000";
+    signal E_Q          : std_ulogic_vector(4 downto 0);
+    
+    -- Decoder signals
+    signal D_WE         : std_logic := '0';
+    signal D_ARG        : std_logic_vector(4 downto 0) := "00000";
+    signal D_Q          : std_ulogic_vector(3 downto 0);
+    signal D_K          : std_ulogic;
     
     -- Internal test signals
     signal Terminate    : std_logic := '0';
@@ -38,8 +56,8 @@ architecture Impl of Encoder4b5b_TB is
     -- Timing constants
     constant T          : time := 3.33 us;
 begin
-    -- 16 values, one cycle delay ---> 17 cycles
-    test_runner_watchdog(runner, 57 us);
+    -- 16 values, one cycle delay each ---> 32 cycles
+    test_runner_watchdog(runner, 33 * T);
     
     
     -- Stimulus and capture/compare.
@@ -83,6 +101,8 @@ begin
             
         variable Index          : integer := 0;
         variable NumCases       : integer;
+        variable Uncoded        : std_logic_vector(3 downto 0);
+        variable ExpCoded       : std_ulogic_vector(4 downto 0);
     begin
         -- Test runner prerequisites
         test_runner_setup(runner, runner_cfg);
@@ -96,31 +116,30 @@ begin
                 NumCases := Vec_RawData'length / VL;
             
                 -- Indicate input is data and enable writing
-                K   <= '0';
-                WE  <= '1';
+                E_K     <= '0';
+                E_WE    <= '1';
+                D_WE    <= '1';
             
-                while Index <= NumCases loop
-                    -- Because there's a cycle delay between input and output,
-                    -- we don't want to assign on the last cycle because we'll
-                    -- produce a bounds violation.
-                    ARG <= Vec_RawData((Index * VL) to (Index * VL) + 3)
-                            when Index < NumCases;
-                            
+                while Index < NumCases loop                
+                    Uncoded := Vec_RawData((Index * VL) to (Index * VL) + 3);
+                    ExpCoded := Vec_RawData((Index * VL) + 4 to (Index * VL) + (VL - 1));
+                
+                    E_ARG <= Uncoded;
+                    D_ARG <= ExpCoded;
+
+                    -- One cycle to register input, one to produce output
+                    wait until rising_edge(CLK);                    
                     wait until rising_edge(CLK);
-                    
-                    -- Output will be invalid on the first cycle because there
-                    -- will have been no starting input, so we delay our checks
-                    -- by a cycle to match unit behaviour.
-                    if Index /= 0 then
-                        check_equal(
-                            Q, Vec_RawData(((Index - 1) * VL) + 4 to ((Index - 1) * VL) + (VL - 1))
-                            );
-                    end if;
+                                    
+                    check_equal(E_Q, ExpCoded, "Item " & to_string(Index) & ", encoding");
+                    check_equal(D_Q, Uncoded, "Item " & to_string(Index) & ", decoding: Q");
+                    check_equal(D_K, '0', "Item " & to_string(Index) & ", decoding: K");
                         
                     Index := Index + 1;
                 end loop;
                 
-                WE <= '0';
+                E_WE <= '0';
+                D_WE <= '0';
             
             
             -- Tests that all valid K-code inputs produce the expected
@@ -129,25 +148,29 @@ begin
                 NumCases := Vec_Kcodes'length / VL;
             
                 -- We're writing a K-code
-                K   <= '1';
-                WE  <= '1';
+                E_K     <= '1';
+                E_WE    <= '1';
+                D_WE    <= '1';
                 
                 while Index <= NumCases loop
-                    ARG <= Vec_Kcodes((Index * VL) to (Index * VL) + 3)
-                            when Index < NumCases;
-                            
-                    wait until rising_edge(CLK);                    
+                    Uncoded := Vec_Kcodes((Index * VL) to (Index * VL) + 3);
+                    ExpCoded := Vec_Kcodes((Index * VL) + 4 to (Index * VL) + (VL - 1));
                     
-                    if Index /= 0 then
-                        check_equal(
-                            Q, Vec_Kcodes(((Index - 1) * VL) + 4 to ((Index - 1) * VL) + (VL - 1))
-                            );
-                    end if;
+                    E_ARG <= Uncoded;
+                    D_ARG <= ExpCoded;
+                            
+                    wait until rising_edge(CLK);
+                    wait until rising_edge(CLK);
+                    
+                    check_equal(E_Q, ExpCoded, "Item " & to_string(Index) & ", encoding");
+                    check_equal(D_Q, Uncoded, "Item " & to_string(Index) & ", decoding: Q");
+                    check_equal(D_K, '1', "Item " & to_string(Index) & ", decoding: K");
                     
                     Index := Index + 1;
                 end loop;
                 
-                WE <= '0';
+                E_WE <= '0';
+                D_WE <= '0';
             
             
             -- Tests that the expected output is still produced even if the
@@ -155,15 +178,20 @@ begin
             elsif run("clock_after_we_low") then
                 wait until rising_edge(CLK);
             
-                K   <= '0';
-                WE  <= '1';
-                ARG <= "1111";
+                E_K     <= '0';
+                E_WE    <= '1';
+                D_WE    <= '1';
+                E_ARG   <= "1111";
+                D_ARG   <= "11101";
                 wait until rising_edge(CLK);
                 
-                WE  <= '0';
+                E_WE    <= '0';
+                D_WE    <= '0';
                 wait until rising_edge(CLK);
                 
-                check_equal(to_string(Q), "11101");
+                check_equal(to_string(E_Q), "11101", "Encoding");
+                check_equal(to_string(D_Q), "1111", "Decoding: Q");
+                check_equal(D_K, '0', "Decoding: K");
                 
                 
             else
@@ -189,11 +217,19 @@ begin
     end process;
 
 
-    UUT: Encoder4b5b port map(
+    ENC: Encoder4b5b port map(
         CLK => CLK,
-        WE  => WE,
-        K   => K,
-        ARG => ARG,
-        Q   => Q
+        WE  => E_WE,
+        K   => E_K,
+        ARG => E_ARG,
+        Q   => E_Q
+        );
+        
+    DEC: Decoder4b5b port map(
+        CLK => CLK,
+        WE  => D_WE,
+        ARG => D_ARG,
+        Q   => D_Q,
+        K   => D_K
         );
 end;
