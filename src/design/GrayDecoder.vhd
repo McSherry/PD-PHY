@@ -30,12 +30,6 @@ architecture Impl of GrayDecoder is
     signal Decode   : std_ulogic_vector((W - 1) downto 0);
 begin
 
-    -- process(CLK)
-    -- begin
-        -- if rising_edge(CLK) then
-            -- Q <= Decode;
-        -- end if;
-    -- end process;
     Q <= Decode;
     
     -- The most significant bit remains unchanged.

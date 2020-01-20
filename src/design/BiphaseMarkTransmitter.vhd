@@ -15,6 +15,7 @@ use IEEE.std_logic_1164.all;
 --      ./BiphaseMarkDriver.vhd
 --      ./PDPreambleGen.vhd
 --      ./Encoder4b5b.vhd
+--      ./FIFO9.vhd
 entity BiphaseMarkTransmitter is
 port(
     -- Wishbone clock
@@ -41,11 +42,20 @@ port(
     WB_WE_I     : in    std_logic;
     
     -- Wishbone data output port
-    WB_DAT_O    : in    std_logic_vector(7 downto 0);
+    WB_DAT_O    : out   std_ulogic_vector(7 downto 0);
     -- Wishbone acknowledge output
-    WB_ACK_O    : in    std_logic;
+    WB_ACK_O    : out   std_ulogic;
     -- Wishbone error output
-    WB_ERR_O    : in    std_logic
+    WB_ERR_O    : out   std_ulogic;
+    
+    -- Line driver data output
+    --      A data output which, when enabled, indicates the outpu that should
+    --      be driven onto the line. Operates at double the data clock rate.
+    LD_DAT_O    : out   std_ulogic;
+    -- Line driver enable
+    --      Indicates when the line driver should be enabled. In a practical
+    --      application, disabling the line driver may tristate it.
+    LD_EN_O     : out   std_ulogic
     );
 end BiphaseMarkTransmitter;
 
