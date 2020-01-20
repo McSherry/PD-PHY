@@ -33,6 +33,48 @@ port(
 end Decoder4b5b;
 
 architecture Impl of Decoder4b5b is
+    signal SymData  : std_ulogic_vector(3 downto 0);
+    signal SymK     : std_ulogic;
 begin
 
+    process(CLK)
+    begin
+        if rising_edge(CLK) and WE = '1' then
+            Q <= SymData;
+            K <= SymK;
+        end if;
+    end process;
+    
+    
+    with ARG select SymData <=
+        -- Raw data
+        "0000" when "11110",
+        "0001" when "01001",
+        "0010" when "10100",
+        "0011" when "10101",
+        "0100" when "01010",
+        "0101" when "01011",
+        "0110" when "01110",
+        "0111" when "01111",
+        "1000" when "10010",
+        "1001" when "10011",
+        "1010" when "10110",
+        "1011" when "10111",
+        "1100" when "11010",
+        "1101" when "11011",
+        "1110" when "11100",
+        "1111" when "11101",
+        -- K codes
+        "0000" when "11000",
+        "0001" when "10001",
+        "0010" when "00110",
+        "0011" when "00111",
+        "0100" when "11001",
+        "0101" when "01101",
+        "----" when others;
+        
+    with ARG select SymK <=
+        '1' when "11000" | "10001" | "00110" | "00111" | "11001" | "01101",
+        '0' when others;
+    
 end;

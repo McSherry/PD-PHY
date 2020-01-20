@@ -152,7 +152,7 @@ begin
                 E_WE    <= '1';
                 D_WE    <= '1';
                 
-                while Index <= NumCases loop
+                while Index < NumCases loop
                     Uncoded := Vec_Kcodes((Index * VL) to (Index * VL) + 3);
                     ExpCoded := Vec_Kcodes((Index * VL) + 4 to (Index * VL) + (VL - 1));
                     
