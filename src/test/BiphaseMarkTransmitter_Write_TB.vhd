@@ -251,7 +251,7 @@ begin
             --
             -- However, we need to order the check for the higher half of the
             -- first so that we can easily check for it.
-            if (Cycle - 64) mod 10 = 0 and HiWait then
+            if (Cycle - 64) mod 5 = 0 and HiWait then
                 -- As below, wait to ensure that we definitely decode correctly.
                 wait until rising_edge(WB_CLK);
                 wait until rising_edge(WB_CLK);
