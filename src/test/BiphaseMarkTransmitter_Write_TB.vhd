@@ -14,12 +14,12 @@ context vunit_lib.vunit_context;
 
 -- Provides an end-to-end test running the BMC transmitter through a Wishbone
 -- bus 'single write' transaction which results in line-driven output.
-entity BiphaseMarkTransmitter_SingleWrite_TB is
+entity BiphaseMarkTransmitter_Write_TB is
     generic(runner_cfg : string := runner_cfg_default);
-end BiphaseMarkTransmitter_SingleWrite_TB;
+end BiphaseMarkTransmitter_Write_TB;
 
 
-architecture Impl of BiphaseMarkTransmitter_SingleWrite_TB is
+architecture Impl of BiphaseMarkTransmitter_Write_TB is
     component BiphaseMarkTransmitter port(
         -- Wishbone signals
         WB_CLK      : in    std_logic;
@@ -132,7 +132,17 @@ begin
             info("Write " & to_string(Cycle) & ", acknowledged");
             
             -- End the current bus cycle
-            WB_CYC_O <= '0';
+            --
+            -- The difference between single and block writes is that 'CYC_O'
+            -- is deasserted between single writes and kept asserted for block
+            -- writes. This should require minimal additional logic so there
+            -- isn't any downside in supporting it.
+            if run("single_write") then
+                WB_CYC_O <= '0';
+            elsif run("block_write") then
+                WB_CYC_O <= '1';
+            end if;
+                
             WB_STB_O <= '0';
             wait until rising_edge(WB_CLK);
             
@@ -263,6 +273,14 @@ begin
                 -- Little-endian transmission means that, if we have data, it
                 -- will be the lower half of the data byte.
                 check_equal(DEC_Q, DATA(3 downto 0), "RX Byte " & to_string(ByteNo) & ", lower half");
+                
+                -- We've mixed in K-codes and raw data, so we want to make sure
+                -- we receive what we expected.
+                if ADDR = "00" then
+                    check_equal(DEC_K, '1', "RX Byte " & to_string(ByteNo) & ", K-code indicated");
+                elsif ADDR = "01" then
+                    check_equal(DEC_K, '0', "RX Byte " & to_string(ByteNo) & ", Data indicated");
+                end if;
                 
                 -- If this was data and not a K-code, we need to wait for its
                 -- higher half to arrive.
