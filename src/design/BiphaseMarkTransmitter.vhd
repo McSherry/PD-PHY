@@ -49,7 +49,7 @@ port(
     WB_ERR_O    : out   std_ulogic;
     
     -- Line driver data output
-    --      A data output which, when enabled, indicates the outpu that should
+    --      A data output which, when enabled, indicates the output that should
     --      be driven onto the line. Operates at double the data clock rate.
     LD_DAT_O    : out   std_ulogic;
     -- Line driver enable
