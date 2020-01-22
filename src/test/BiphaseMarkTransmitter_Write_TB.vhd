@@ -75,7 +75,8 @@ architecture Impl of BiphaseMarkTransmitter_Write_TB is
     signal DEC_K    : std_ulogic;
     
     -- Test internal signals
-    signal CaptureDone : std_logic := '0';
+    signal TestStart    : std_logic := '0';
+    signal CaptureDone  : std_logic := '0';
     
     -- Timing constants
     constant T_WB   : time := 100 ns;
@@ -95,16 +96,103 @@ begin
     -- This is an arbitrarily chosen high value.
     test_runner_watchdog(runner, 100 us);
     
+    
+    master: process
+        variable ExpErrno   : std_ulogic_vector(7 downto 0);
+    begin
+        test_runner_setup(runner, runner_cfg);
+        show(get_logger(default_checker), display_handler, pass);
+        
+        -- Used to hold other processes until we set up the test runner.
+        TestStart <= '1';
+        
+        -- Single and block writes are tested entirely in separate processes,
+        -- and so all we do here is wait for them to signal their end.
+        if run("single_write") or run("block_write") then
+            wait until CaptureDone = '1';
+            
+        -- Whereas testing error response can be done here as we don't need to
+        -- capture any asynchronous output.
+        elsif run("write_not_supported") or run("bad_kcode") then
+            WB_CYC_O    <= '1';
+            WB_STB_O    <= '1';
+            WB_WE_O     <= '1';
+            
+            -- If we're testing that writes to read-only registers cause an
+            -- error, we write to ERRNO
+            if running_test_case = "write_not_supported" then
+                WB_ADR_O    <= "11";
+                WB_DAT_O    <= "10101010";
+                
+            -- If we're testing for bad K-codes, we write to KWRITE.
+            elsif running_test_case = "bad_kcode" then
+                WB_ADR_O    <= "00";
+                WB_DAT_O    <= "10000000";
+            
+            else
+                assert false report "Unspecified test case (1)" severity failure;
+            end if;
+            wait until rising_edge(WB_CLK);
+            
+            -- Slave should assert the error signal
+            info("Invalid write, waiting...");
+            if WB_ERR_I /= '1' then
+                wait until WB_ERR_I = '1';
+            end if;
+            info("Invalid write, error signalled");
+            
+            
+            WB_CYC_O    <= '0';
+            WB_STB_O    <= '0';
+            wait until rising_edge(WB_CLK);
+            
+            
+            -- It should now be possible for us to read back the value in the
+            -- ERRNO register, which should indicate the operation wasn't
+            -- supported.
+            WB_CYC_O    <= '1';
+            WB_STB_O    <= '1';
+            WB_WE_O     <= '0';
+            WB_ADR_O    <= "11";
+            wait until rising_edge(WB_CLK);
+            
+            info("Errno, waiting...");
+            if WB_ACK_I /= '1' then
+                wait until WB_ACK_I = '1';
+            end if;
+            info("Errno, acknowledged");
+            
+            -- The error code we're testing for obviously varies by test case.
+            if running_test_case = "write_not_supported" then
+                ExpErrno := std_ulogic_vector'(x"02");
+            elsif running_test_case = "bad_kcode" then
+                ExpErrno := std_ulogic_vector'(x"80");
+            else
+                assert false report "Unspecified test case (2)" severity failure;
+            end if;
+            
+            check_equal(WB_DAT_I, ExpErrno, "Errno check");
+        end if;
+
+        test_runner_cleanup(runner);
+    end process;
+    
 
     -- Generates the stimulus that simulates a Wishbone bus transaction.
-    stimulus: process
+    general_stimulus: process
         variable Cycle  : integer := 0;
         variable OFFSET : integer;
         variable ADDR   : std_logic_vector(1 downto 0);
         variable DATA   : std_logic_vector(7 downto 0);
     begin
-        test_runner_setup(runner, runner_cfg);
-        show(get_logger(default_checker), display_handler, pass);
+        wait until TestStart = '1';
+    
+        -- We only want this process to run if we're testing general write
+        -- functionality
+        if running_test_case /= "single_write" and
+           running_test_case /= "block_write" then
+           wait;
+        end if;
     
         
         while Cycle < NumCases loop
@@ -137,9 +225,9 @@ begin
             -- is deasserted between single writes and kept asserted for block
             -- writes. This should require minimal additional logic so there
             -- isn't any downside in supporting it.
-            if run("single_write") then
+            if running_test_case = "single_write" then
                 WB_CYC_O <= '0';
-            elsif run("block_write") then
+            elsif running_test_case = "block_write" then
                 WB_CYC_O <= '1';
             end if;
                 
@@ -149,18 +237,13 @@ begin
             Cycle := Cycle + 1;
         end loop;
         
-        
-        -- Once we've fed it all the input we have, wait for all of the
-        -- transsmitter's output to be captured.
-        wait until CaptureDone = '1';
-
-        test_runner_cleanup(runner);
+        wait;
     end process;
     
     
     -- Captures the output from the BMC transmitter and compares it against
     -- the anticipated output.
-    capture: process
+    general_capture: process
         -- Tracks the current clock cycle
         variable Cycle : integer := 0;
         
@@ -178,7 +261,17 @@ begin
         -- Whether, in testing received data, we have to wait for the higher
         -- half of the data. This is set to false when we receive a K-code.
         variable HiWait : boolean := false;
-    begin        
+    begin
+        wait until TestStart = '1';
+        
+        -- We only want this process to run if we're testing general write
+        -- functionality
+        if running_test_case /= "single_write" and
+           running_test_case /= "block_write" then
+           wait;
+        end if;
+        
+    
         -- The first thing transmitted should be a preamble of alternating
         -- ones and zeroes, BMC-coded, for 64 cycles.
         while Cycle < 64 loop        
