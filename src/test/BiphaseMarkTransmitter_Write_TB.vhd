@@ -109,6 +109,12 @@ begin
         -- Single and block writes are tested entirely in separate processes,
         -- and so all we do here is wait for them to signal their end.
         if run("single_write") or run("block_write") then
+            WB_CYC_O    <= 'Z';
+            WB_STB_O    <= 'Z';
+            WB_WE_O     <= 'Z';
+            WB_RST_O     <= 'Z';
+            WB_ADR_O     <= (others => 'Z');
+            WB_DAT_O     <= (others => 'Z');
             wait until CaptureDone = '1';
             
         -- Whereas testing error response can be done here as we don't need to
