@@ -360,11 +360,7 @@ begin
             --
             -- However, we need to order the check for the higher half of the
             -- first so that we can easily check for it.
-            if (Cycle - 64) mod 5 = 0 and HiWait then
-                -- As below, wait to ensure that we definitely decode correctly.
-                wait until rising_edge(WB_CLK);
-                wait until rising_edge(WB_CLK);
-                
+            if Cycle /= 64 and (Cycle - 64) mod 5 = 0 and HiWait then
                 check_equal(DEC_Q, DATA(7 downto 4), "RX Byte " & to_string(ByteNo) & ", higher half");
             
                 -- Clear the "wait for higher half" flag
@@ -372,13 +368,7 @@ begin
                 
                 ByteNo := ByteNo + 1;
             
-            elsif (Cycle - 64) mod 5 = 0 then
-                -- We wait to ensure that the decoder has definitely processed
-                -- our input. The Wishbone clock should be so much faster than
-                -- the transmitter data clock that this is safe.
-                wait until rising_edge(WB_CLK);
-                wait until rising_edge(WB_CLK);
-                
+            elsif Cycle /= 64 and (Cycle - 64) mod 5 = 0 then                
                 -- Little-endian transmission means that, if we have data, it
                 -- will be the lower half of the data byte.
                 check_equal(DEC_Q, DATA(3 downto 0), "RX Byte " & to_string(ByteNo) & ", lower half");
@@ -403,7 +393,12 @@ begin
                 end if;
             end if;
             
-            Cycle := Cycle + 1;
+            Cycle   := Cycle + 1;
+            -- The line state inverts at the end of each UI, but also in the
+            -- middle of a UI if a '1' was transmitted. That means we can't
+            -- simply invert our tracking variable, but instead have to use
+            -- the line state we recorded.
+            LInvert := not LD_DAT_I;
         end loop;
         
         CaptureDone <= '1';
