@@ -87,7 +87,7 @@ begin
             info("Read 1, acknowledged");
             
             -- We expect it to report: not FULL, not FILLING, EMPTY, blanks.
-            check_equal(WB_DAT_I, std_ulogic_vector'("00100000"), "Read 1, STATUS");
+            check_equal(WB_DAT_I, std_ulogic_vector'("00000100"), "Read 1, STATUS");
             
             
             -- If we're testing single reads, we deassert WB_CYC_O between
