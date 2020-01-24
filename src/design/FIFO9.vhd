@@ -138,7 +138,7 @@ architecture FFREG of FIFO9 is
     -- read pointer 'RPtr_Next' to zero.
     signal RS_RST       : std_ulogic;
     -- Whether the read pointer has wrapped around; alternates with each wrap.
-    signal R_Wrapped    : std_ulogic;
+    signal R_Wrapped    : std_ulogic := '0';
     
 begin
 
