@@ -148,9 +148,6 @@ begin
         variable DIFF       : unsigned(3 downto 0);
     begin
         if rising_edge(WRCLK) then
-            -- If we're full and receive a write request, that's an error.
-            WERR <= FULL and WREQ;
-
             -- If we receive a request to write while we're not full, we
             -- service it.
             if WREQ = '1' and FULL = '0' then
@@ -188,7 +185,7 @@ begin
                 -- be ahead of the read pointer. If the wraparound state of
                 -- the two pointers is the same, then, the write pointer will
                 -- always be greater or equal.
-                if (W_Wrapped xnor WS_R_Wrapped) then
+                if W_Wrapped xnor WS_R_Wrapped then
                     DIFF := unsigned(WPtr_Binary) - unsigned(WS_RPtr_Binary);
                     FILLING <= '1' when DIFF >= (Depth/2) else '0';
                 
@@ -205,6 +202,9 @@ begin
             
         end if;
     end process;
+    
+    -- If we're full and receive a write request, that's an error.
+    WERR <= FULL and WREQ;
     
     -- The wrap indicator is encoded in the Gray code MSB.
     W_Wrapped <= WPtr_Next(4);

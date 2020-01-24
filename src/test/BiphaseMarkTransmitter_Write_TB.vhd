@@ -319,7 +319,10 @@ begin
             
             -- Next cycle
             Cycle   := Cycle + 1;
-            LInvert := not LInvert;
+            -- This is a statement of intent: we don't need to invert here,
+            -- because the mid-UI inversion will be cancelled out by the
+            -- end-of-UI inversion, bringing us back to the original state.
+            LInvert := LInvert;
         end loop;
         
         -- What should follow the preamble is the data we wrote to the
