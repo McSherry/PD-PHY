@@ -267,7 +267,7 @@ begin
         variable LInvert : std_logic := '0';
         
         -- Aids in accessing the test data
-        variable OFFSET : integer;
+        variable OFFSET : integer := -1;
         variable ADDR   : std_logic_vector(1 downto 0);
         variable DATA   : std_logic_vector(7 downto 0);
         
@@ -328,7 +328,7 @@ begin
         -- What should follow the preamble is the data we wrote to the
         -- transmitter, except in 4b5b- and BMC-coded form. We'll decode the
         -- data and compare it with our expected values.
-        while LD_EN_I = '1' loop
+        while LD_EN_I = '1' and OFFSET /= 0 loop
             -- As above, we have to calculate offset like this to make
             -- writing out the test data intuitive.
             OFFSET := (NumCases - ByteNo - 1) * DatWidth;
@@ -400,6 +400,8 @@ begin
             -- the line state we recorded.
             LInvert := not LD_DAT_I;
         end loop;
+        
+        info("All data captured.");
         
         CaptureDone <= '1';
         
