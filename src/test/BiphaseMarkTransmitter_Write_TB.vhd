@@ -191,6 +191,13 @@ begin
         variable ADDR   : std_logic_vector(1 downto 0);
         variable DATA   : std_logic_vector(7 downto 0);
     begin
+        WB_CYC_O    <= 'Z';
+        WB_STB_O    <= 'Z';
+        WB_WE_O     <= 'Z';
+        WB_RST_O     <= 'Z';
+        WB_ADR_O     <= (others => 'Z');
+        WB_DAT_O     <= (others => 'Z');
+            
         wait until TestStart = '1';
     
         -- We only want this process to run if we're testing general write

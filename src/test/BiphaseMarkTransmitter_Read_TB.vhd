@@ -116,6 +116,7 @@ begin
             if WB_ACK_I /= '1' then
                 wait until WB_ACK_I = '1';
             end if;
+            info("Write, acknowledged");
             
             
             -- End write
@@ -140,6 +141,7 @@ begin
             if WB_ACK_I /= '1' then
                 wait until WB_ACK_I = '1';
             end if;
+            info("Read 2, acknowledged");
             
             
             -- We expect it to report: not FULL, not FILLING, not EMPTY, blank.
@@ -185,6 +187,8 @@ begin
             
             check_equal(WB_DAT_I, std_ulogic_vector'(x"02"), "Errno check");
         end if;
+        
+        test_runner_cleanup(runner);
     end process;
 
 
