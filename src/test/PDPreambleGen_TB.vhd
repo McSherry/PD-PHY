@@ -22,6 +22,7 @@ architecture Impl of PDPreambleGen_TB is
     component PDPreambleGen port(
         CLK     : in    std_logic;
         TRIG    : in    std_logic;
+        RST     : in    std_logic;
         Q       : out   std_ulogic;
         FIN     : out   std_ulogic
         );
@@ -155,6 +156,7 @@ begin
     UUT: PDPreambleGen port map(
         CLK  => CLK,
         TRIG => TRIG,
+        RST  => '0',
         Q    => Q,
         FIN  => FIN
         );

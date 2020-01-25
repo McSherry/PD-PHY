@@ -18,6 +18,10 @@ port(
     --      When asserted for at least one clock cycle, causes the preamble
     --      generator to begin producing output.
     TRIG    : in    std_logic;
+    -- Reset
+    --      When asserted, voids any previously received trigger and returns
+    --      the preamble generator to idle.
+    RST     : in    std_logic;
     
     -- Data output
     Q       : out   std_ulogic;
@@ -29,7 +33,7 @@ end PDPreambleGen;
 
 architecture Impl of PDPreambleGen is
     -- Accumulator register
-    signal ACC          : std_logic_vector(5 downto 0) := "000000";
+    signal ACC          : std_logic_vector(5 downto 0) := (others => '0');
     
     -- Internal adder wires
     signal ADD_Wire     : std_logic_vector(5 downto 0);
@@ -43,10 +47,17 @@ begin
     -- produced by a check that all six bits are logic high.
     main: process(CLK)
     begin
-        -- If we've been triggered or we're in the process of counting, latch
-        -- in the new count from the adder on each cycle.
-        if rising_edge(CLK) and ((TRIG = '1') or (ACC /= "000000")) then
-            ACC <= ADD_Wire;
+        if rising_edge(CLK) then
+            -- If we're being reset, return the accumulator to its idle value
+            -- and hold until the reset is lifted.
+            if RST = '1' then
+                ACC <= (others => '0');
+                
+            -- Otherwise, if we've been triggered or we're in the process of
+            -- counting, latch in the new count from the adder every cycle.
+            elsif TRIG = '1' or ACC /= "000000" then
+                ACC <= ADD_Wire;
+            end if;
         end if;
     end process;
     

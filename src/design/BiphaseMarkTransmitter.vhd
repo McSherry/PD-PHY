@@ -94,6 +94,7 @@ architecture Impl of BiphaseMarkTransmitter is
     component PDPreambleGen port(
         CLK     : in    std_logic;
         TRIG    : in    std_logic;
+        RST     : in    std_logic;
         Q       : out   std_ulogic;
         FIN     : out   std_ulogic
         );
@@ -181,7 +182,6 @@ architecture Impl of BiphaseMarkTransmitter is
     --      shift register onto the encoder's output.
     signal LENC_OUT_SR  : std_ulogic_vector(4 downto 0);
     
-    
     -- Line driver control signals
     --
     -- Line driver data input
@@ -191,6 +191,9 @@ architecture Impl of BiphaseMarkTransmitter is
     -- Line driver multiplexer control
     --      '0' connects to the preamble generator, '1' to the shift register.
     signal LD_MUX       : std_ulogic := '0';
+    
+    -- Line driver-synchronised reset
+    signal LDS_WB_RST_I : std_ulogic := '0';
     
     -- Status flag offsets
     constant FLAG_FULL      : integer := 0;
@@ -238,8 +241,10 @@ begin
         
             -- If we're being reset...
             if WB_RST_I = '1' then
-                -- ...
-                assert false report "Not yet implemented.";
+                WB_ACK_O    <= '0';
+                WB_ERR_O    <= '0';
+                EMPTY_PRE   <= '0';
+                
                 
             -- If a cycle is ongoing and our strobe input has been asserted,
             -- then a Wishbone master has requested we do something.
@@ -598,6 +603,20 @@ begin
                         State := S1_Idle;
                     end if;
             end case;
+            
+            
+            -- If we're being reset, return to the idle state and reset all
+            -- our control signals
+            if LDS_WB_RST_I = '1' then
+                State       := S1_Idle;
+                IS_LAST     := '0';
+                BUF_RREQ    <= '0';
+                PAG_TRIG    <= '0';
+                LD_WE       <= '0';
+                LD_MUX      <= LD_MUX_PREAMBLE;
+                LENC_WE     <= '0';
+                LENC_MUX    <= LENC_MUX_LO;
+            end if;
         end if;
     
     end process;
@@ -657,6 +676,7 @@ begin
     PreambleGen: PDPreambleGen port map(
         CLK     => DCLK,
         TRIG    => PAG_TRIG,
+        RST     => LDS_WB_RST_I,
         Q       => PAG_OUTPUT,
         FIN     => PAG_FINAL
         );
@@ -678,4 +698,12 @@ begin
         Q   => LD_DAT_O,
         OE  => LD_EN_O
         );
+        
+    Sync_LDS_WB_RST_I: CD2FF
+        generic map(W => 1, INITIAL => (others => '0'))
+        port map(
+            CLK     => DCLK,
+            D(0)    => WB_RST_I,
+            Q(0)    => LDS_WB_RST_I
+            );
 end;
