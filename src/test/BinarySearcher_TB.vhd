@@ -38,7 +38,7 @@ architecture Impl of BinarySearcher_TB is
     -- Timing constants
     constant T      : time := 10 ns;
 begin
-    test_runner_watchdog(runner, 12 * T);
+    test_runner_watchdog(runner, 16 * T);
 
 
     -- Generates stimulus for the UUT and captures/compares output
@@ -67,10 +67,16 @@ begin
         -- produce an all-ones output
         elsif run("all_ones") then
             Target := 127.0;
+            
+        elsif run("all_but_lsb") then
+            Target := 126.0;
         
         -- The same as above, but at the lowest value
         elsif run("all_zeroes") then
             Target := 0.0;
+            
+        elsif run("none_but_msb") then
+            Target := 1.0;
         
         end if;
         
@@ -82,7 +88,14 @@ begin
         
         while RDY /= '1' loop
             TRG <= '1';
-            CMP <= '1' when Target > real(to_integer(unsigned(Q))) else '0';
+            CMP <= '1' when Target < real(to_integer(unsigned(Q))) else '0';
+            wait until rising_edge(CLK);
+            
+            -- We need to insert a cycle's delay. If we don't, the cycle between
+            -- input being clocked in and output being clocked out will mean that
+            -- a stale 'CMP' will be presented, which will produce incorrect
+            -- comparisons.
+            TRG <= '0';
             wait until rising_edge(CLK);
         end loop;
         
