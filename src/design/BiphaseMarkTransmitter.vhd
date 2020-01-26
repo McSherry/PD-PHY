@@ -494,7 +494,7 @@ begin
                         
                     -- Loading data ready for transmission has a few cycles of
                     -- delay, so we need to start preparing when we reach the
-                    -- third bit of five in the shift register.
+                    -- second bit of five in the shift register.
                     elsif State = S3_ShiftOut2 then
                         -- If we're dealing with a K-code, we need to request
                         -- the next word to be transmitted from the buffer.

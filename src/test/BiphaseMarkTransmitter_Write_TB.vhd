@@ -94,7 +94,7 @@ architecture Impl of BiphaseMarkTransmitter_Write_TB is
         );
 begin
     -- This is an arbitrarily chosen high value.
-    test_runner_watchdog(runner, 100 us);
+    test_runner_watchdog(runner, 110 us);
     
     
     master: process
@@ -328,7 +328,7 @@ begin
         -- What should follow the preamble is the data we wrote to the
         -- transmitter, except in 4b5b- and BMC-coded form. We'll decode the
         -- data and compare it with our expected values.
-        while LD_EN_I = '1' and OFFSET /= 0 loop
+        while LD_EN_I = '1' and ByteNo < NumCases loop
             -- As above, we have to calculate offset like this to make
             -- writing out the test data intuitive.
             OFFSET := (NumCases - ByteNo - 1) * DatWidth;
@@ -401,7 +401,7 @@ begin
             LInvert := not LD_DAT_I;
         end loop;
         
-        info("All data captured.");
+        check_equal(ByteNo, NumCases, "All cases run");
         
         CaptureDone <= '1';
         
