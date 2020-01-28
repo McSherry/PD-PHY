@@ -33,9 +33,9 @@ architecture Impl of PDCRCEngine_TB is
     signal Q                : std_ulogic_vector(31 downto 0);
     
     -- USB-PD constants
-    signal CRC_INITIAL      : std_ulogic_vector(31 downto 0) := x"FFFFFFFF";
-    signal CRC_RESIDUAL     : std_ulogic_vector(31 downto 0) := x"C704DD7B";
-    signal CRC_EXAMPLE      : std_ulogic_vector(31 downto 0) := x"2FC51328";
+    constant CRC_INITIAL      : std_ulogic_vector(31 downto 0) := x"FFFFFFFF";
+    constant CRC_RESIDUAL     : std_ulogic_vector(31 downto 0) := x"C704DD7B";
+    constant CRC_EXAMPLE      : std_ulogic_vector(31 downto 0) := x"2FC51328";
     
     -- Timing constants
     constant T  : time := 10 ns;
@@ -46,24 +46,35 @@ begin
     stimulus: process
         variable Index  : natural := 0;
         
+        -- The CRC generator inverts and bitwise-reverses its output so that it
+        -- produces the codes USB-PD requires. This means its residual will also
+        -- be inverted and swapped.
+        --
+        -- We invert and swap the received residual so we can compare it to the
+        -- constant value specified above.
+        variable RESID_INV : std_ulogic_vector(31 downto 0);
+        
         -- GoodCRC example data
         --
         -- Two set bits are the 'GoodCRC' message type, and the 'Source' power
         -- role indicator.
-        variable EX_GOODCRC : std_ulogic_vector(15 downto 0) := x"0101";
+        constant EX_GOODCRC : std_ulogic_vector(15 downto 0) := x"0101";
     begin
         test_runner_setup(runner, runner_cfg);
         show(get_logger(default_checker), display_handler, pass);
         
         
         -- The engine should begin with USB-PD's defined initial value
-        check_equal(Q, CRC_INITIAL, "Initial value");
+        --
+        -- The CRC engine inverts and swaps its output, so all ones should
+        -- become all zeroes.
+        check_equal(not Q, CRC_INITIAL, "Initial value");
         
         -- We test CRC generation by feeding through the example data from
         -- the USB-PD standard, Appendix A.2.
         --
         -- First, the 'GoodCRC' example message to check the CRC itself.
-        while Index < EX_GOODCRC'left loop
+        while Index < EX_GOODCRC'length loop
             WE  <= '1';
             D   <= EX_GOODCRC(Index);
             wait until rising_edge(CLK);
@@ -81,26 +92,34 @@ begin
         -- And then write the CRC itself through, which should produce the
         -- standard-specified residual value
         Index := 0;
-        while Index < CRC_EXAMPLE'left loop
+        while Index < CRC_EXAMPLE'length loop
             WE  <= '1';
             D   <= CRC_EXAMPLE(Index);
             wait until rising_edge(CLK);
             
             Index := Index + 1;
         end loop;
+
         
         -- Wait for the effect of the last data bit
         WE  <= '0';
         wait until rising_edge(CLK);
         
-        check_equal(Q, CRC_RESIDUAL, "Residual");
+        -- Invert, reverse residual
+        for i in 0 to Q'left loop
+            RESID_INV(i) := not Q(Q'left - i);
+        end loop;
+        
+        check_equal(RESID_INV, CRC_RESIDUAL, "Residual");
         
         
         -- Then we reset and check for the initial value
         RST <= '1';
         wait until rising_edge(CLK);
         
-        check_equal(Q, CRC_INITIAL, "Reset");
+        -- The CRC engine inverts and swaps its output, so all ones should
+        -- become all zeroes.
+        check_equal(not Q, CRC_INITIAL, "Reset");
         
         
         test_runner_cleanup(runner);
@@ -109,7 +128,8 @@ begin
     -- Data clock generation
     DCLK: process
     begin
-        CLK <= not CLK after T/2;
+        wait for T/2;
+        CLK <= not CLK;
     end process;
 
     UUT: PDCRCEngine port map(
