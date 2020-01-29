@@ -19,22 +19,26 @@ entity FIFO9_FFREG_Cycle_TB is
 end FIFO9_FFREG_Cycle_TB;
 
 architecture Impl of FIFO9_FFREG_Cycle_TB is
-    component FIFO9 port(
-        WRCLK   : in    std_logic;
-        WREQ    : in    std_logic;
-        DI      : in    std_logic_vector(8 downto 0);
-        FULL    : out   std_ulogic;
-        FILLING : out   std_ulogic;
-        WERR    : out   std_ulogic;
-        
-        RDCLK   : in    std_logic;
-        RREQ    : in    std_logic;
-        DO      : out   std_ulogic_vector(8 downto 0);
-        EMPTY   : out   std_ulogic;
-        RERR    : out   std_ulogic;
-        
-        RST     : in    std_logic
-        );
+    component FIFO9
+        generic(
+            ASYNC   : boolean
+            );
+        port(
+            WRCLK   : in    std_logic;
+            WREQ    : in    std_logic;
+            DI      : in    std_logic_vector(8 downto 0);
+            FULL    : out   std_ulogic;
+            FILLING : out   std_ulogic;
+            WERR    : out   std_ulogic;
+            
+            RDCLK   : in    std_logic;
+            RREQ    : in    std_logic;
+            DO      : out   std_ulogic_vector(8 downto 0);
+            EMPTY   : out   std_ulogic;
+            RERR    : out   std_ulogic;
+            
+            RST     : in    std_logic
+            );
     end component;
     
     -- FIFO9 signals
@@ -209,19 +213,23 @@ begin
     end process;
     
     
-    UUT: entity work.FIFO9(FFREG) port map(
-        WRCLK   => WRCLK,
-        WREQ    => WREQ,
-        DI      => DI,
-        FULL    => FULL,
-        FILLING => FILLING,
-        WERR    => WERR,
-        RDCLK   => RDCLK,
-        RREQ    => RREQ,
-        DO      => DO,
-        EMPTY   => EMPTY,
-        RERR    => RERR,
-        RST     => RST
-        );
+    UUT: entity work.FIFO9(FFREG)
+        generic map(
+            ASYNC   => true
+            )
+        port map(
+            WRCLK   => WRCLK,
+            WREQ    => WREQ,
+            DI      => DI,
+            FULL    => FULL,
+            FILLING => FILLING,
+            WERR    => WERR,
+            RDCLK   => RDCLK,
+            RREQ    => RREQ,
+            DO      => DO,
+            EMPTY   => EMPTY,
+            RERR    => RERR,
+            RST     => RST
+            );
 end;
     

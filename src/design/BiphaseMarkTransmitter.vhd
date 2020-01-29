@@ -73,22 +73,26 @@ architecture Impl of BiphaseMarkTransmitter is
             );
     end component;
 
-    component FIFO9 port(
-        WRCLK   : in    std_logic;
-        WREQ    : in    std_logic;
-        DI      : in    std_logic_vector(8 downto 0);
-        FULL    : out   std_ulogic;
-        FILLING : out   std_ulogic;
-        WERR    : out   std_ulogic;
-        
-        RDCLK   : in    std_logic;
-        RREQ    : in    std_logic;
-        DO      : out   std_ulogic_vector(8 downto 0);
-        EMPTY   : out   std_ulogic;
-        RERR    : out   std_ulogic;
-        
-        RST     : in    std_logic
-        );
+    component FIFO9
+        generic(
+            ASYNC   : boolean
+            );
+        port(
+            WRCLK   : in    std_logic;
+            WREQ    : in    std_logic;
+            DI      : in    std_logic_vector(8 downto 0);
+            FULL    : out   std_ulogic;
+            FILLING : out   std_ulogic;
+            WERR    : out   std_ulogic;
+            
+            RDCLK   : in    std_logic;
+            RREQ    : in    std_logic;
+            DO      : out   std_ulogic_vector(8 downto 0);
+            EMPTY   : out   std_ulogic;
+            RERR    : out   std_ulogic;
+            
+            RST     : in    std_logic
+            );
     end component;
 
     component PDPreambleGen port(
@@ -637,22 +641,26 @@ begin
 
 
     -- The FIFO that provides the TX buffer
-    BUF: entity work.FIFO9(FFREG) port map(
-        WRCLK   => WB_CLK,
-        WREQ    => BUF_WREQ,
-        DI      => BUF_DI,
-        FULL    => BUF_FULL,
-        FILLING => BUF_FILLING,
-        WERR    => BUF_WERR,
-        
-        RST     => WB_RST_I,
-        
-        RDCLK   => DCLK,
-        RREQ    => BUF_RREQ,
-        DO      => BUF_DO,
-        EMPTY   => BUF_EMPTY,
-        RERR    => BUF_RERR
-        );
+    BUF: entity work.FIFO9(FFREG)
+        generic map(
+            ASYNC   => true
+            )
+        port map(
+            WRCLK   => WB_CLK,
+            WREQ    => BUF_WREQ,
+            DI      => BUF_DI,
+            FULL    => BUF_FULL,
+            FILLING => BUF_FILLING,
+            WERR    => BUF_WERR,
+            
+            RST     => WB_RST_I,
+            
+            RDCLK   => DCLK,
+            RREQ    => BUF_RREQ,
+            DO      => BUF_DO,
+            EMPTY   => BUF_EMPTY,
+            RERR    => BUF_RERR
+            );
         
     -- Wishbone-domain synchroniser for the FIFO 'EMPTY' status flag
     Sync_WBS_EMPTY: CD2FF

@@ -12,6 +12,13 @@ use IEEE.numeric_std.all;
 -- Provides an asynchronous first-in first-out (FIFO) buffer which stores 9-bit
 -- words and exposes an interface largely compatible with Xilinx block RAMs.
 entity FIFO9 is
+generic(
+    -- Is asynchronous FIFO
+    --      Whether the read and write portions of the FIFO are driven from
+    --      asynchronous clocks. When true, causes synchronisers to be generated
+    --      to pass signals between the two clock domains.
+    ASYNC   : boolean
+    );
 port(
     -- Write clock
     --      Used to synchronise writes to the FIFO.
@@ -127,6 +134,9 @@ architecture FFREG of FIFO9 is
     
     -- Read-domain signals
     --
+    -- The read clock. Routing it through a separate signal more easily allows
+    -- us to genericise the FIFO for synchronous operation.
+    signal RDCLK_Map    : std_ulogic;
     -- The pointer to the next location in the FIFO to read.
     signal RPtr_Next    : std_ulogic_vector(4 downto 0);
     -- A signal, connected to the address generator, which indicates whether
@@ -243,10 +253,10 @@ begin
     
     
     -- This process provides clocked read-domain functionality.
-    read_domain: process(RDCLK)
+    read_domain: process(RDCLK_Map)
         variable ADDRESS    : integer;
     begin
-        if rising_edge(RDCLK) then
+        if rising_edge(RDCLK_Map) then
             -- The wrap indicator is encoded in the Gray code MSB.
             R_Wrapped <= RPtr_Next(4);
             
@@ -313,45 +323,57 @@ begin
         
     -- Gray code generator to produce the next value of the read pointer
     RPtrNextGen: GrayGenerator5b port map(
-        CLK     => RDCLK,
+        CLK     => RDCLK_Map,
         EN      => RPtr_Gen,
         Q       => RPtr_Next,
         RST     => RS_RST
         );
-        
-    -- Write-domain synchroniser for the read pointer
-    Sync_WS_RPtr_Next: CD2FF
-        generic map(W => 5, INITIAL => (others => '0'))
-        port map(
-            CLK => WRCLK,
-            D   => RPtr_Next,
-            Q   => WS_RPtr_Next
-            );
+    
+
+    -- If we're an asynchronous FIFO, generate synchronisers.
+    Gen_Synchronisers: if ASYNC generate
+        RDCLK_Map   <= RDCLK;
+    
+        -- Write-domain synchroniser for the read pointer
+        Sync_WS_RPtr_Next: CD2FF
+            generic map(W => 5, INITIAL => (others => '0'))
+            port map(
+                CLK => WRCLK,
+                D   => RPtr_Next,
+                Q   => WS_RPtr_Next
+                );
+                
+        -- Write-domain synchroniser for the read-wrapped signal
+        Sync_WS_R_Wrapped: CD2FF
+            generic map(W => 1, INITIAL => (others => '0'))
+            port map(
+                CLK  => WRCLK,
+                D(0) => R_Wrapped,
+                Q(0) => WS_R_Wrapped
+                );
             
-    -- Write-domain synchroniser for the read-wrapped signal
-    Sync_WS_R_Wrapped: CD2FF
-        generic map(W => 1, INITIAL => (others => '0'))
-        port map(
-            CLK  => WRCLK,
-            D(0) => R_Wrapped,
-            Q(0) => WS_R_Wrapped
-            );
-        
-    -- Read-domain synchroniser for the reset signal
-    Sync_RS_WPtr_Reset: CD2FF
-        generic map(W => 1, INITIAL => (others => '0'))
-        port map(
-            CLK  => RDCLK,
-            D(0) => RST,
-            Q(0) => RS_RST
-            );
-            
-    -- Read-domain synchroniser for the write pointer
-    Sync_RS_WPtr_Next: CD2FF
-        generic map(W => 5, INITIAL => (others => '0'))
-        port map(
-            CLK => RDCLK,
-            D   => WPtr_Next,
-            Q   => RS_WPtr_Next
-            );
+        -- Read-domain synchroniser for the reset signal
+        Sync_RS_WPtr_Reset: CD2FF
+            generic map(W => 1, INITIAL => (others => '0'))
+            port map(
+                CLK  => RDCLK,
+                D(0) => RST,
+                Q(0) => RS_RST
+                );
+                
+        -- Read-domain synchroniser for the write pointer
+        Sync_RS_WPtr_Next: CD2FF
+            generic map(W => 5, INITIAL => (others => '0'))
+            port map(
+                CLK => RDCLK,
+                D   => WPtr_Next,
+                Q   => RS_WPtr_Next
+                );
+    else generate
+        RDCLK_Map       <= WRCLK;
+        WS_RPtr_Next    <= RPtr_Next;
+        WS_R_Wrapped    <= R_Wrapped;
+        RS_RST          <= RST;
+        RS_WPtr_Next    <= WPtr_Next;
+    end generate Gen_Synchronisers;
 end;
