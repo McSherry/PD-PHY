@@ -17,6 +17,8 @@ generic(
     --      Whether the read and write portions of the FIFO are driven from
     --      asynchronous clocks. When true, causes synchronisers to be generated
     --      to pass signals between the two clock domains.
+    --
+    --      If false, 'WRCLK' is used to drive all logic and 'RDCLK' is ignored.
     ASYNC   : boolean
     );
 port(
@@ -134,9 +136,6 @@ architecture FFREG of FIFO9 is
     
     -- Read-domain signals
     --
-    -- The read clock. Routing it through a separate signal more easily allows
-    -- us to genericise the FIFO for synchronous operation.
-    signal RDCLK_Map    : std_ulogic;
     -- The pointer to the next location in the FIFO to read.
     signal RPtr_Next    : std_ulogic_vector(4 downto 0);
     -- A signal, connected to the address generator, which indicates whether
@@ -151,7 +150,7 @@ architecture FFREG of FIFO9 is
     signal R_Wrapped    : std_ulogic := '0';
     
 begin
-
+    
     -- This process provides clocked write-domain functionality.
     write_domain: process(WRCLK)
         variable ADDRESS    : integer;
@@ -253,10 +252,11 @@ begin
     
     
     -- This process provides clocked read-domain functionality.
-    read_domain: process(RDCLK_Map)
+    read_domain: process(RDCLK, WRCLK)
         variable ADDRESS    : integer;
     begin
-        if rising_edge(RDCLK_Map) then
+        if (ASYNC = true and rising_edge(RDCLK)) or
+           (ASYNC = false and rising_edge(WRCLK)) then
             -- The wrap indicator is encoded in the Gray code MSB.
             R_Wrapped <= RPtr_Next(4);
             
@@ -321,18 +321,15 @@ begin
             );
     
         
-    -- Gray code generator to produce the next value of the read pointer
-    RPtrNextGen: GrayGenerator5b port map(
-        CLK     => RDCLK_Map,
-        EN      => RPtr_Gen,
-        Q       => RPtr_Next,
-        RST     => RS_RST
-        );
-    
-
     -- If we're an asynchronous FIFO, generate synchronisers.
     Gen_Synchronisers: if ASYNC generate
-        RDCLK_Map   <= RDCLK;
+        -- Gray code generator to produce the next value of the read pointer
+        RPtrNextGen: GrayGenerator5b port map(
+            CLK     => RDCLK,
+            EN      => RPtr_Gen,
+            Q       => RPtr_Next,
+            RST     => RS_RST
+            );
     
         -- Write-domain synchroniser for the read pointer
         Sync_WS_RPtr_Next: CD2FF
@@ -370,7 +367,14 @@ begin
                 Q   => RS_WPtr_Next
                 );
     else generate
-        RDCLK_Map       <= WRCLK;
+        -- Gray code generator to produce the next value of the read pointer
+        RPtrNextGen: GrayGenerator5b port map(
+            CLK     => WRCLK,
+            EN      => RPtr_Gen,
+            Q       => RPtr_Next,
+            RST     => RST
+            );
+            
         WS_RPtr_Next    <= RPtr_Next;
         WS_R_Wrapped    <= R_Wrapped;
         RS_RST          <= RST;

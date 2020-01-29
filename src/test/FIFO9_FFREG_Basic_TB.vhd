@@ -213,7 +213,7 @@ begin
             elsif run("write_error") then
                 Enable_WRCLK    <= '1';
                 WREQ            <= '1';
-                DI              <= "111000101"; -- 1A5h
+                DI              <= "111000101"; -- 1C5h
                 
                 -- Capacity is unspecified, so we keep writing until we receive
                 -- the 'FULL' signal from the FIFO.
