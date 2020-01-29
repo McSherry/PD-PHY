@@ -104,7 +104,7 @@ begin
                 -- Wait to propagate
                 wait until rising_edge(WRCLK);
                 
-                Enable_WRCLK    <= '0';
+                Enable_WRCLK    <= '1';
                 
                 -- Status check
                 check_equal(FULL,       '0',    "First write: FULL");
@@ -115,10 +115,10 @@ begin
                 -- signal has to pass across clock domains twice, so it will
                 -- take four cycles (two per synchroniser, twice) to update.
                 Enable_RDCLK    <= '1';
-                wait until rising_edge(RDCLK);
-                wait until rising_edge(RDCLK);
-                wait until rising_edge(RDCLK);
-                wait until rising_edge(RDCLK);
+                -- wait until rising_edge(RDCLK);
+                -- wait until rising_edge(RDCLK);
+                -- wait until rising_edge(RDCLK);
+                -- wait until rising_edge(RDCLK);
                 Enable_RDCLK    <= '0';
                 check_equal(EMPTY,      '0',    "First write: EMPTY");
                 
@@ -126,9 +126,9 @@ begin
                 Enable_RDCLK    <= '1';
                 RREQ            <= '1';
                 
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
                 RREQ            <= '0';
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
                 
                 -- Clear inputs
                 Enable_RDCLK    <= '0';
@@ -141,7 +141,7 @@ begin
                 
                 -- Again, EMPTY is synchronised to RDCLK.
                 Enable_RDCLK    <= '1';
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
                 check_equal(EMPTY,      '1',    "First read: EMPTY");
                 Enable_RDCLK    <= '0';
                 
@@ -152,18 +152,19 @@ begin
             -- from the FIFO whilst it's empty.
             elsif run("read_error") then
                 Enable_RDCLK    <= '1';
+                Enable_WRCLK    <= '1';
                 RREQ            <= '1';
                 
                 -- One clock to register inputs, one to generate output.
-                wait until rising_edge(RDCLK);
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
+                wait until rising_edge(WRCLK);
                 
                 -- First we verify that an error is indicated
                 check_equal(RERR,   '1',    "Read on empty: RERR");
                 check_equal(EMPTY,  '1',    "Read on empty: EMPTY");
                 
-                wait until rising_edge(RDCLK);
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
+                wait until rising_edge(WRCLK);
                 
                 Enable_RDCLK    <= '0';
                 
@@ -179,7 +180,7 @@ begin
                 WREQ <= '0';
                 wait until rising_edge(WRCLK);
                 
-                Enable_WRCLK    <= '0';
+                Enable_WRCLK    <= '1';
                 Enable_RDCLK    <= '1';
                 
                 -- The functional description says that this period does not
@@ -188,7 +189,9 @@ begin
                 --
                 -- A stall here will cause the watchdog to trigger, so this
                 -- test remains safe even with an indeterminate wait.
-                wait until RERR = '0';
+                if RERR /= '0' then
+                    wait until RERR = '0';
+                end if;
                 
                 -- We've now written to the FIFO, so it isn't empty.
                 check_equal(EMPTY, '0', "Refilled: EMPTY");
@@ -196,9 +199,9 @@ begin
                 -- And if we try to read, we should now get the value written
                 -- above on the output.
                 RREQ <= '1';
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
                 RREQ <= '0';
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
                 
                 Enable_RDCLK <= '0';
                 
@@ -213,7 +216,7 @@ begin
             elsif run("write_error") then
                 Enable_WRCLK    <= '1';
                 WREQ            <= '1';
-                DI              <= "111000101"; -- 1A5h
+                DI              <= "111000101"; -- 1C5h
                 
                 -- Capacity is unspecified, so we keep writing until we receive
                 -- the 'FULL' signal from the FIFO.
@@ -235,7 +238,8 @@ begin
                 -- persists while the FIFO is full.
                 wait until rising_edge(WRCLK);
                 
-                Enable_WRCLK    <= '0';
+                WREQ <= '0';
+                Enable_WRCLK    <= '1';
                 
                 check_equal(WERR, '1', "Write on full: WERR, contd.");
                 check_equal(FILLING, '1', "Write on full: FILLING, contd.");
@@ -245,21 +249,23 @@ begin
                 Enable_RDCLK    <= '1';
                 
                 -- Wait for values to cross into the read domain.
-                wait until rising_edge(RDCLK);
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
+                wait until rising_edge(WRCLK);
                 
                 -- Initiate read
                 RREQ            <= '1';
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
                 RREQ            <= '0';
-                wait until rising_edge(RDCLK);
+                wait until rising_edge(WRCLK);
                 
                 Enable_RDCLK    <= '0';
                 Enable_WRCLK    <= '1';
                 
-                wait until WERR = '0';
+                if WERR /= '0' then
+                    wait until WERR = '0';
+                end if;
                 
-                Enable_WRCLK    <= '0';
+                Enable_WRCLK    <= '1';
                 
                 -- Just helps us see the end of the wave
                 wait for 1 us;
@@ -294,7 +300,9 @@ begin
                 
                 -- The time for a reset to take effect is indeterminate, so we
                 -- have to wait for the FIFO to indicate it is empty.
-                wait until EMPTY = '0';
+                if EMPTY /= '0' then
+                    wait until EMPTY = '0';
+                end if;
                 
                 info("EMPTY deasserted");
                 
@@ -337,7 +345,7 @@ begin
     
     UUT: entity work.FIFO9(FFREG)
         generic map(
-            ASYNC   => true
+            ASYNC   => false
             )
         port map(
             WRCLK   => WRCLK,
