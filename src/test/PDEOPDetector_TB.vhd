@@ -32,6 +32,14 @@ architecture Impl of PDCRCEngine_TB is
     signal D            : std_ulogic_vector(4 downto 0) := (others => '0');
     signal DET          : std_ulogic;
     
+    -- K-code constants
+    constant K_SYNC1    : std_ulogic_vector(4 downto 0) := "11000";
+    constant K_SYNC2    : std_ulogic_vector(4 downto 0) := "10001";
+    constant K_RST1     : std_ulogic_vector(4 downto 0) := "00111";
+    constant K_RST2     : std_ulogic_vector(4 downto 0) := "11001";
+    constant K_EOP      : std_ulogic_vector(4 downto 0) := "01101";
+    constant K_RST3     : std_ulogic_vector(4 downto 0) := "00110";
+    
     -- Timing constants
     constant T  : time := 10 ns;
 begin
@@ -51,7 +59,34 @@ begin
         -- If we present the 'EOP' K-code, the detected signal should
         -- always be asserted
         if run("kcode_eop") then
-            assert false;
+            -- First, we'll just test it on its own
+            D   <= K_EOP;
+            EN  <= '1';
+            wait until rising_edge(CLK);
+            EN  <= '0';
+            wait until rising_edge(CLK);
+            
+            check_equal(DET, '1', "Alone, triggered");
+            
+            RST <= '1';
+            
+            check_equal(DET, '0', "Alone, reset");
+            
+            
+            -- And then we'll put some data in before it
+            EN  <= '1';
+            D   <= K_RST1;
+            wait until rising_edge(CLK);
+            check_equal(DET, '0', "Prefixed, 1");
+            wait until rising_edge(CLK);
+            check_equal(DET, '0', "Prefixed, 2");
+            D   <= K_EOP;
+            wait until rising_edge(CLK);
+            EN  <= '0';
+            check_equal(DET, '0', "Prefixed, 3");
+            wait until rising_edge(CLK);
+            check_equal(DET, '1', "Prefixed, 4");
+            
         
         -- If we present the full 'Hard_Reset' ordered set as the first
         -- thing to the detector, the detected signal should be asserted
