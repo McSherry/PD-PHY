@@ -13,12 +13,12 @@ context vunit_lib.vunit_context;
 
 
 -- Provides test for the USB-PD CRC engine.
-entity PDCRCEngine_TB is
+entity PDEOPDetector_TB is
     generic(runner_cfg : string := runner_cfg_default);
-end PDCRCEngine_TB;
+end PDEOPDetector_TB;
 
 
-architecture Impl of PDCRCEngine_TB is
+architecture Impl of PDEOPDetector_TB is
     component PDEOPDetector port(
         CLK : in    std_logic;
         EN  : in    std_logic;
@@ -26,11 +26,16 @@ architecture Impl of PDCRCEngine_TB is
         RST : in    std_logic;
         DET : out   std_ulogic
         );
+    end component;
         
     -- Detector signals
     signal CLK, EN, RST : std_ulogic := '0';
     signal D            : std_ulogic_vector(4 downto 0) := (others => '0');
     signal DET          : std_ulogic;
+    
+    -- Data constants
+    constant D_07h      : std_ulogic_vector(4 downto 0) := "01111";
+    constant D_0Ah      : std_ulogic_vector(4 downto 0) := "10110";
     
     -- K-code constants
     constant K_SYNC1    : std_ulogic_vector(4 downto 0) := "11000";
@@ -38,7 +43,7 @@ architecture Impl of PDCRCEngine_TB is
     constant K_RST1     : std_ulogic_vector(4 downto 0) := "00111";
     constant K_RST2     : std_ulogic_vector(4 downto 0) := "11001";
     constant K_EOP      : std_ulogic_vector(4 downto 0) := "01101";
-    constant K_RST3     : std_ulogic_vector(4 downto 0) := "00110";
+    constant K_SYNC3    : std_ulogic_vector(4 downto 0) := "00110";
     
     -- Timing constants
     constant T  : time := 10 ns;
@@ -90,13 +95,68 @@ begin
         
         -- If we present the full 'Hard_Reset' ordered set as the first
         -- thing to the detector, the detected signal should be asserted
-        elsif run("orderedset_hard_reset") then
-            assert false;
+        --
+        -- But 'Hard_Reset' signalling which follows some other data
+        -- shouldn't produce a signal. We'll conveniently ignore that this
+        -- is invalid, and leave that to someone higher up the stack.
+        elsif run("orderedset_hard_reset") or run("prefixed_hard_reset") then
+            -- If we're prefixing data, it's as simple here as clocking
+            -- in some data before the ordered set.
+            if running_test_case = "prefixed_hard_reset" then
+                EN  <= '1';
+                D   <= D_0Ah;
+                wait until rising_edge(CLK);
+            end if;
+            
+            -- 'Hard_Reset' is three RST-1s followed by a RST-2.
+            EN  <= '1';
+            D   <= K_RST1;
+            wait until rising_edge(CLK);
+            wait until rising_edge(CLK);
+            wait until rising_edge(CLK);
+            
+            D   <= K_RST2;
+            wait until rising_edge(CLK);
+            EN  <= '0';
+            wait until rising_edge(CLK);
+            
+            if running_test_case = "orderedset_hard_reset" then
+                check_equal(DET, '1', "Detection");
+            elsif running_test_case = "prefixed_hard_reset" then
+                check_equal(DET, '0', "Detection");
+            else
+                assert false;
+            end if;
             
         -- The same is true for the 'Cable_Reset' ordered set
         elsif run("orderedset_cable_reset") then
-            assert false;
+            if running_test_case = "prefixed_cable_reset" then
+                EN  <= '1';
+                D   <= D_07h;
+                wait until rising_edge(CLK);
+            end if;
             
+            -- 'Cable_Reset' is RST-1, Sync-1, RST-1, Sync-3
+            EN  <= '1';
+            D   <= K_RST1;
+            wait until rising_edge(CLK);
+            D   <= K_SYNC1;
+            wait until rising_edge(CLK);
+            D   <= K_RST1;
+            wait until rising_edge(CLK);
+            D   <= K_SYNC3;
+            wait until rising_edge(CLK);
+            EN  <= '0';
+            wait until rising_edge(CLK);
+            
+            if running_test_case = "orderedset_cable_reset" then
+                check_equal(DET, '1', "Detection");
+            elsif running_test_case = "prefixed_cable_reset" then
+                check_equal(DET, '0', "Detection");
+            else
+                assert false;
+            end if;
+                
         -- Similarly, an incomplete (3 of 4 K-codes) ordered set should
         -- produce a detection
         elsif run("incomplete_hard_reset") then
@@ -104,16 +164,6 @@ begin
             
         -- Ditto
         elsif run("incomplete_cable_reset") then
-            assert false;
-            
-        -- But 'Hard_Reset' signalling which follows some other data
-        -- shouldn't produce a signal. We'll conveniently ignore that this
-        -- is invalid, and leave that to someone higher up the stack.
-        elsif run("prefixed_hard_reset") then
-            assert false;
-            
-        -- Ditto again
-        elsif run("prefixed_cable_reset") then
             assert false;
             
         end if;
@@ -136,4 +186,4 @@ begin
         RST => RST,
         DET => DET
         );
-end
+end;
