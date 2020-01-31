@@ -36,6 +36,7 @@ architecture Impl of PDEOPDetector_TB is
     -- Data constants
     constant D_07h      : std_ulogic_vector(4 downto 0) := "01111";
     constant D_0Ah      : std_ulogic_vector(4 downto 0) := "10110";
+    constant D_INVALID  : std_ulogic_vector(4 downto 0) := "00101";
     
     -- K-code constants
     constant K_SYNC1    : std_ulogic_vector(4 downto 0) := "11000";
@@ -47,6 +48,10 @@ architecture Impl of PDEOPDetector_TB is
     
     -- Timing constants
     constant T  : time := 10 ns;
+    
+    -- Ordered sets
+    constant HARD_RESET     : std_ulogic_vector(19 downto 0) := K_RST2 & K_RST1 & K_RST1 & K_RST1;
+    constant CABLE_RESET    : std_ulogic_vector(19 downto 0) := K_SYNC3 & K_RST1 & K_SYNC1 & K_RST1;
 begin
     test_runner_watchdog(runner, 10 * T);
     
@@ -159,13 +164,44 @@ begin
                 
         -- Similarly, an incomplete (3 of 4 K-codes) ordered set should
         -- produce a detection
-        elsif run("incomplete_hard_reset") then
-            assert false;
+        elsif run("incomplete_hard_reset") or run("incomplete_cable_reset") then
+            -- We try the ordered set four times, replacing one of the K-codes
+            -- with an invalid code in each iteration
+            for i in 0 to 3 loop
+                RST <= '0';
             
-        -- Ditto
-        elsif run("incomplete_cable_reset") then
-            assert false;
-            
+                -- Each ordered set is four K-codes, so we need to loop through
+                -- those four and provide them to the detector.
+                for j in 0 to 3 loop
+                    EN  <= '1';
+                
+                    -- One out of the four we have to replace with a code that
+                    -- isn't correct.
+                    if j = i then
+                        D   <= D_INVALID;
+                    
+                    -- But the rest we insert as normal.
+                    else
+                        if running_test_case = "incomplete_hard_reset" then
+                            D   <= HARD_RESET((j * 5) + 4 downto j * 5);
+                        elsif running_test_case = "incomplete_cable_reset" then
+                            D   <= CABLE_RESET((j * 5) + 4 downto j * 5);
+                        else
+                            assert false;
+                        end if;
+                    end if;
+                    
+                    wait until rising_edge(CLK);
+                end loop;
+                
+                EN  <= '0';
+                wait until rising_edge(CLK);
+                
+                check_equal(DET, '1', "Replaced K#" & to_string(i));
+                
+                RST <= '1';
+                wait until rising_edge(CLK);
+            end loop;            
         end if;
         
         test_runner_cleanup(runner);
