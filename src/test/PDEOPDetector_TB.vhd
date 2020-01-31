@@ -79,6 +79,8 @@ begin
             check_equal(DET, '1', "Alone, triggered");
             
             RST <= '1';
+            wait for 1 fs;
+            RST <= '0';
             
             check_equal(DET, '0', "Alone, reset");
             
@@ -134,7 +136,7 @@ begin
             end if;
             
         -- The same is true for the 'Cable_Reset' ordered set
-        elsif run("orderedset_cable_reset") then
+        elsif run("orderedset_cable_reset") then        
             if running_test_case = "prefixed_cable_reset" then
                 EN  <= '1';
                 D   <= D_07h;
@@ -165,6 +167,8 @@ begin
         -- Similarly, an incomplete (3 of 4 K-codes) ordered set should
         -- produce a detection
         elsif run("incomplete_hard_reset") or run("incomplete_cable_reset") then
+            set_timeout(runner, 25 * T);
+        
             -- We try the ordered set four times, replacing one of the K-codes
             -- with an invalid code in each iteration
             for i in 0 to 3 loop
@@ -200,7 +204,9 @@ begin
                 check_equal(DET, '1', "Replaced K#" & to_string(i));
                 
                 RST <= '1';
-                wait until rising_edge(CLK);
+                wait for 1 fs;
+                
+                check_equal(DET, '0', "Reset " & to_string(i));
             end loop;            
         end if;
         
