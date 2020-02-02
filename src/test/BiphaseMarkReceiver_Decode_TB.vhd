@@ -88,6 +88,24 @@ architecture Impl of BiphaseMarkReceiver_Decode_TB is
         -- Start of Packet
         K_SYNC2 & K_SYNC1 & K_SYNC1 & K_SYNC1
         );
+    -- How the above message should decode, in order
+    constant DEC_GOODCRC : std_ulogic_vector((9 * 11) - 1 downto 0) := (
+        --  K-code?     Value
+                '1' &   "00000101"  &   -- EOP
+                
+                '0' &   x"2F"       &   -- CRC32, high-order byte
+                '0' &   x"C5"       &
+                '0' &   x"13"       &
+                '0' &   x"28"       &   -- CRC32, low-order bye
+                
+                '0' &   x"01"       &   -- GoodCRC header
+                '0' &   x"01"       &   -- GoodCRC header    
+                
+                '1' &   "00000001"  &   -- Sync-2
+                '1' &   "00000000"  &   -- Sync-1
+                '1' &   "00000000"  &   -- Sync-1
+                '1' &   "00000000"      -- Sync-1
+        );
     
     -- Timing constants
     --
@@ -180,6 +198,83 @@ begin
         
         wait until CaptureDone = '1';
         test_runner_cleanup(runner);
+    end process;
+    
+    
+    -- Interacts with the control unit over its Wishbone interface and
+    -- verifies that it decodes the data in the way expected
+    capture: process
+        variable CaptureIndex : integer := 0;
+    begin
+        wait until TestBegin = '1';
+        
+        -- We continually request the control unit's 'TYPE' register until
+        -- it indicates that data is present. When it is, we read it and
+        -- compare against the test data constant.
+        while CaptureIndex < (DEC_GOODCRC'length / 9) loop
+            -- Set up the Wishbone request
+            WB_CYC_O    <= '1';
+            WB_STB_O    <= '1';
+            WB_WE_O     <= '0';
+            WB_ADR_O    <= "01";
+            wait until rising_edge(WB_CLK);
+            
+            -- The slave should always acknowledge an attempt to read from
+            -- its 'TYPE' register
+            if WB_ACK_I /= '1' then
+                wait until WB_ACK_I = '1';
+            end if;
+            
+            -- If there isn't any data available from the receiver, we'll
+            -- wait and try again
+            if WB_DAT_I = x"00" then
+                WB_STB_O <= '0';
+                wait until rising_edge(WB_CLK);
+                next;
+            end if;
+            
+            
+            -- If we do get data, then we'll try to compare it
+            info("Reading RX byte " & to_string(CaptureIndex) & "...");
+            
+            -- First, it should be the data type we expect (K-code or raw data)
+            if DEC_GOODCRC((CaptureIndex * 9) + 8) = '1' then
+                check_equal(WB_DAT_I, std_logic_vector'(x"03"), "Data type indication");
+            else
+                check_equal(WB_DAT_I, std_logic_vector'(x"01"), "Data type indication");
+            end if;
+            
+            -- End current request
+            WB_STB_O <= '0';
+            wait until rising_edge(WB_CLK);
+            
+            -- Try to read from the RX FIFO
+            WB_STB_O    <= '1';
+            WB_WE_O     <= '0';
+            WB_ADR_O    <= "00";
+            wait until rising_edge(WB_CLK);
+            
+            if WB_ACK_I /= '1' then
+                wait until WB_ACK_I = '1';
+            end if;
+            
+            -- And second, it should have the value we expect
+            check_equal(
+                WB_DAT_I,
+                DEC_GOODCRC((CaptureIndex * 9) + 7 downto (CaptureIndex * 9)),
+                "Data value"
+                );
+                
+            -- End request
+            WB_STB_O    <= '0';
+            wait until rising_edge(WB_CLK);
+            
+            -- And repeat
+            CaptureIndex := CaptureIndex + 1;
+        end loop;
+        
+        CaptureDone <= '1';
+        wait;
     end process;
 
 
