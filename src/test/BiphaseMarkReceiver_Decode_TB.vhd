@@ -67,9 +67,9 @@ architecture Impl of BiphaseMarkReceiver_Decode_TB is
     -- Test data
     --
     -- Kcodes
-    constant K_SYNC1    : std_ulogic_vector(4 downto 0) := "00011";
+    constant K_SYNC1    : std_ulogic_vector(4 downto 0) := "11000";
     constant K_SYNC2    : std_ulogic_vector(4 downto 0) := "10001";
-    constant K_EOP      : std_ulogic_vector(4 downto 0) := "10110";
+    constant K_EOP      : std_ulogic_vector(4 downto 0) := "01101";
     --
     -- This is the 'GoodCRC' message illustrated in Appendix A.2 of USB-PD. It
     -- is given in reverse order here to allow the individual components to be
@@ -78,11 +78,11 @@ architecture Impl of BiphaseMarkReceiver_Decode_TB is
         -- EOP
         K_EOP &
     
-        -- CRC32
+        -- CRC32 (2FC51328h)
         "10100" & "11101" & "11010" & "01011" & "01001" &
         "10101" & "10100" & "10010" &
     
-        -- 'GoodCRC' header
+        -- 'GoodCRC' header (0101h)
         "11110" & "01001" & "11110" & "01001" &
     
         -- Start of Packet
