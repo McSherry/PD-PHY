@@ -343,10 +343,11 @@ begin
             S2d_Preamble_WaitHigh1,
             S2d_Preamble_WaitHigh2,
             
-            -- State 3: Start-of-Packet
-            --      The interpreter is waiting for an ordered set. This state
-            --      does not verify the correctness of received sets.
-            S3_OrderedSet
+            -- State 3: Read in
+            --      The interpreter is decoding the value from the line and
+            --      shifting it into a register ready to be decoded.
+            S3_ReadIn_Start,
+            S3_ReadIn_HighEnd
         );
         
         -- The current state
@@ -363,7 +364,11 @@ begin
                 State := S1_Idle;
                 Count := 0;
                 
-            else            
+            else
+                -- **********
+                --
+                -- The first set of logic handles reading in values from the
+                -- line and readying them for decoding, as appropriate.
                 case State is
                     -- ##########
                     --
@@ -483,7 +488,7 @@ begin
                                 State := S2d_Preamble_WaitHigh2;
                                 
                             elsif Count = 63 then
-                                State := S3_OrderedSet;
+                                State := S3_ReadIn_Start;
                                 Count := 0;
                                 
                             else
@@ -494,13 +499,181 @@ begin
                         
                     -- ##########
                     --
-                    -- Placeholder
-                    when S3_OrderedSet =>
-                        if Count = 0 then
-                            Count := Count + 1;
+                    -- We're ready to interpret the next line symbol, but we
+                    -- don't know what it will be yet. It could be low, in
+                    -- which case we can move on to the next one, or it could
+                    -- be high, in which case we need to wait for its second
+                    -- transition to confirm.
+                    when S3_ReadIn_Start =>
+                        -- When we detect a line transition...
+                        if RXIN_EDGE = '1' then
+                            -- If the overlong tap is high, something is wrong
+                            -- with the data we're receiving
+                            if TAP_O_UI = '1' then
+                                assert false report "Not implemented";
+                                
+                            -- If the full-UI tap is high, logic zero. We
+                            -- stay in the same state because we don't know
+                            -- what to expect next.
+                            elsif TAP_F_UI = '1' then
+                                SR_RXIN <= '0' & SR_RXIN(4 downto 1);
+                                Count := Count + 1;
+                                
+                            -- If the half-UI tap is high but the full-UI tap
+                            -- isn't, logic one. We need to wait for the second
+                            -- transition, and so move from this state.
+                            elsif TAP_H_UI = '1' then
+                                State := S3_ReadIn_HighEnd;
+                                
+                            -- If none of the taps are high, something else
+                            -- has gone wrong with our data.
+                            else
+                                assert false report "Not implemented";
+                            end if;
+                        end if;
+                        
+                    -- ##########
+                    --
+                    -- We're now expecting that, on the next edge, we'll have
+                    -- the second half of the logic one.
+                    when S3_ReadIn_HighEnd =>
+                        if RXIN_EDGE = '1' then
+                            -- We only expect the half-UI tap to be high. If
+                            -- anything else is, that's an error.
+                            if (TAP_O_UI or TAP_F_UI) = '1' then
+                                assert false report "Not implemented";
+                                
+                            -- If that tap is high, we can shift in the next
+                            -- bit and return to our previous state
+                            elsif TAP_H_UI = '1' then
+                                SR_RXIN <= '1' & SR_RXIN(4 downto 1);
+                                State   := S3_ReadIn_Start;
+                                Count   := Count + 1;
+                                
+                            -- If no taps are high, something else is wrong.
+                            else
+                                assert false report "Not implemented";
+                            end if;
                         end if;
                 end case;
+                
+                
+                -- **********
+                --
+                -- The second bit of logic is fairly simple, it just needs to
+                -- operate concurrently with the first bit and so it is more
+                -- easily organised separately.
+                case State is
+                    
+                    -- ##########
+                    --
+                    -- Every time a transition is detected, the logic above
+                    -- shifts a new bit in. What we do here is keep track of
+                    -- how many bits have been shifted in and enable the
+                    -- decoder when necessary.
+                    --
+                    -- Other logic deals with conveying decoder output to
+                    -- the RX queue.
+                    when S3_ReadIn_Start | S3_ReadIn_HighEnd =>
+                        if RXIN_EDGE = '1' and Count = 5 then
+                            LDEC_WE <= '1';
+                            Count   := 0;
+                        else
+                            LDEC_WE <= '0';
+                        end if;
+                        
+                
+                    -- ##########
+                    --
+                    -- We want to idle in other states, as they indicate that
+                    -- data we're looking to decode isn't ready yet.
+                    when others =>
+                        null;
+                end case;
             end if;
+        
+        end if;
+    end process;
+    
+    
+    -- Transfers data from the output of the decoder into the RX queue.
+    Queuer: process(WB_CLK)
+        type QState_t is (
+            -- State 1: Idling
+            --      The queuer is waiting for the decoder to be triggered.
+            S1_Idle,
+            
+            -- State 2: Assembling
+            --      The queuer is assembling data to write to the RX queue. A
+            --      pair of states are provided because, if it is raw data, it
+            --      will be decoded in two 4-bit halves, so a second state is
+            --      required to handle the second half.
+            S2a_Assemble_FirstHalfOrK,
+            S2b_Assemble_WaitForSecond,
+            S2c_Assemble_SecondHalf
+        );
+        
+        variable State : QState_t := S1_Idle;
+    begin
+        if rising_edge(WB_CLK) then
+            -- As we need to clear this in almost every state, it's easier
+            -- to put it before the switch.
+            RXQ_WREQ <= '0';
+        
+            case State is
+            
+                -- ##########
+                --
+                -- We don't have anything to do until the decoder produces
+                -- output, and it only produces output when its write-enable
+                -- input is asserted. If we see it's asserted, we know that
+                -- output will be available on the next cycle.
+                when S1_Idle =>                
+                    if LDEC_WE = '1' then
+                        State := S2a_Assemble_FirstHalfOrK;
+                    end if;
+                    
+                -- ##########
+                --
+                -- One cycle after the decoder was enabled, its output will
+                -- be available.
+                when S2a_Assemble_FirstHalfOrK =>
+                    -- No matter what we've decoded, it'll go in the least
+                    -- significant half of the word we write to the queue.
+                    R_DECODE(3 downto 0)    <= LDEC_OUT;
+                    
+                    -- If this was a K-code, we clear the higher half of
+                    -- the input and write to the queue, then return to
+                    -- idle to wait for the next piece of data.
+                    if LDEC_K = '1' then
+                        R_DECODE(7 downto 4)    <= (others => '0');
+                        State                   := S1_Idle;
+                        RXQ_WREQ                <= '1';
+                        
+                    -- Otherwise, we need to wait for the second half
+                    else
+                        State := S2b_Assemble_WaitForSecond;
+                    end if;
+                    
+                -- ##########
+                --
+                -- Similarly to the idle state, we wait for the decoder to
+                -- be enabled before we add the second half.
+                when S2b_Assemble_WaitForSecond =>
+                    if LDEC_WE = '1' then
+                        State := S2c_Assemble_SecondHalf;
+                    end if;
+                    
+                -- ##########
+                --
+                -- And now that we have the second half of the data, we
+                -- can add it to the RX queue's input and enqueue.
+                when S2c_Assemble_SecondHalf =>
+                    R_DECODE(7 downto 4)    <= LDEC_OUT;
+                    RXQ_WREQ                <= '1';
+                    State                   := S1_Idle;
+                    
+            end case;
         
         end if;
     end process;
@@ -625,7 +798,7 @@ begin
         WE  => LDEC_WE,
         ARG => SR_RXIN,
         Q   => LDEC_OUT,
-        K   => open --LDEC_K
+        K   => LDEC_K
         );
     
     -- A binary search component which will refine the frequency the

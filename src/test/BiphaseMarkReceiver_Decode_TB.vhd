@@ -195,8 +195,9 @@ begin
         wait until rising_edge(RXCLK);
         RXIN <= '1';
         
-        
-        wait until CaptureDone = '1';
+        if CaptureDone /= '1' then
+            wait until CaptureDone = '1';
+        end if;
         test_runner_cleanup(runner);
     end process;
     
@@ -273,6 +274,7 @@ begin
             CaptureIndex := CaptureIndex + 1;
         end loop;
         
+        info("Capture complete.");
         CaptureDone <= '1';
         wait;
     end process;
