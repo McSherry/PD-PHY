@@ -324,6 +324,9 @@ begin
     -- Interprets the input from the line and writes the results to the RX queue.
     LineInterpreting: process(WB_CLK)
         type RXState_t is (
+            -- State 0: Startup
+            S0_Startup,
+        
             -- State 1: Idling
             --      The interpreter is waiting for the start of a new
             --      transmission.
@@ -347,7 +350,7 @@ begin
         );
         
         -- The current state
-        variable State  : RXState_t := S1_Idle;
+        variable State  : RXState_t := S0_Startup;
         -- A scratchpad count register, used for:
         --  o Keeping track of the current position in the preamble
         --  o Counting the K-codes of an ordered set
@@ -360,13 +363,30 @@ begin
                 State := S1_Idle;
                 Count := 0;
                 
-            else
+            else            
                 case State is
+                    -- ##########
+                    --
+                    -- Here, we wait for four clocks to allow our line
+                    -- synchroniser to clock in the idle line state.
+                    --
+                    -- If we didn't do this, the line idling at a level
+                    -- other than that which our synchroniser was initialised
+                    -- to would result in an edge being detected when none
+                    -- was actually present.
+                    when S0_Startup =>
+                        if Count = 4 then
+                            Count := 0;
+                            State := S1_Idle;
+                        else
+                            Count := Count + 1;
+                        end if;
+                
                     -- ##########
                     --
                     -- In the idle state, we're looking for our initial
                     -- transition indicating the start of the preamble.
-                    when S1_Idle =>
+                    when S1_Idle =>                            
                         -- If we detect an edge...
                         if RXIN_EDGE = '1' then
                             -- We need to know which edge. Receivers must
@@ -442,21 +462,27 @@ begin
                         FDIV_TRG <= '0';
                         
                         if RXIN_EDGE = '1' then
-                            -- If we've reached the end, move to waiting for data
-                            if Count = 63 then
+                        
+                            -- We know the preamble ends on a logic one, so we
+                            -- can test our count register at the end of each
+                            -- logic one we expect.
+                            --
+                            -- In other cases, we just progress through the
+                            -- states, incrementing our count as needed.
+                            if State = S2c_Preamble_WaitLow then
+                                State := S2d_Preamble_WaitHigh1;
+                                Count := Count + 1;
+                                
+                            elsif State = S2d_Preamble_WaitHigh1 then
+                                State := S2d_Preamble_WaitHigh2;
+                                
+                            elsif Count = 63 then
                                 State := S3_OrderedSet;
                                 Count := 0;
                                 
                             else
+                                State := S2c_Preamble_WaitLow;
                                 Count := Count + 1;
-                                
-                                if State = S2c_Preamble_WaitLow then
-                                    State := S2d_Preamble_WaitHigh1;
-                                elsif State = S2d_Preamble_WaitHigh1 then
-                                    State := S2d_Preamble_WaitHigh2;
-                                else
-                                    State := S2c_Preamble_WaitLow;
-                                end if;
                             end if;
                         end if;
                         
