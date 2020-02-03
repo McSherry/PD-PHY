@@ -223,6 +223,7 @@ begin
         constant ERR_BADREG     : std_ulogic_vector(7 downto 0) := x"01";
         constant ERR_NOTSUPPT   : std_ulogic_vector(7 downto 0) := x"02";
         constant ERR_BADKCODE   : std_ulogic_vector(7 downto 0) := x"80";
+        -- FIXME: No logic exists to assert an overflow error.
         constant ERR_TXOVERFL   : std_ulogic_vector(7 downto 0) := x"81";
     begin
     
