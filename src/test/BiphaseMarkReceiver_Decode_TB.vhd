@@ -110,7 +110,7 @@ architecture Impl of BiphaseMarkReceiver_Decode_TB is
     -- Timing constants
     --
     -- Wishbone clock period
-    constant T_WB       : time := 100 ns;
+    constant T_WB       : time := 10 ns;
     -- Fastest BMC data clock (330kHz)
     constant T_BMC_FAST : time := 3.03 us;
     -- Nominal BMC data clock (300kHz)

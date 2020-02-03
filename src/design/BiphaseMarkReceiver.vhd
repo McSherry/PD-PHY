@@ -420,14 +420,20 @@ begin
                         if RXIN_EDGE = '1' then
                             -- If we're finished refining, we want to just wait,
                             -- expecting a logic one to follow us.
-                            if FDIV_READY = '1' then
+                            --
+                            -- Because we might reach a suitable frequency before
+                            -- setting all the frequency divider's bits, we'll
+                            -- transition unconditionally to the wait state after
+                            -- 48 cycles. This is more than enough time to set
+                            -- all the bits if that's needed.
+                            if FDIV_READY = '1' or Count > 47 then
                                 State := S2d_Preamble_WaitHigh1;
                                 
                             -- Otherwise, if we aren't finished, we want to check
                             -- we're not too fast and not too slow
                             elsif TAP_O_UI = '1' or TAP_F_UI = '0' then
                                 FDIV_TRG    <= '1';
-                                FDIV_CMP    <= not TAP_F_UI;
+                                FDIV_CMP    <= TAP_F_UI;
                                 State := S2b_Preamble_RefineHigh1;
                                 
                             -- And if we're just right, we can move on.
@@ -491,7 +497,6 @@ begin
                     -- Placeholder
                     when S3_OrderedSet =>
                         if Count = 0 then
-                            report "End of preamble";
                             Count := Count + 1;
                         end if;
                 end case;
@@ -535,7 +540,7 @@ begin
             -- And before then, shift in a one for each pulse of the divided
             -- master clock.
             elsif DCO_PULSE = '1' then
-                SR_RXDECODE <= SR_RXDECODE(SR_RXDECODE'left downto 1) & '1';
+                SR_RXDECODE <= SR_RXDECODE(SR_RXDECODE'left - 1 downto 0) & '1';
                 
             end if;
         end if;
