@@ -225,7 +225,6 @@ begin
             end loop;
             
             -- And we now read from RXQ, which should generate an error signal.
-            info("Checking error...");
             WB_CYC_O    <= '1';
             WB_STB_O    <= '1';
             WB_WE_O     <= '0';
@@ -256,6 +255,28 @@ begin
             check_equal(WB_DAT_I, std_ulogic_vector'(x"80"), "Error code");
             
         end if;
+        
+        -- After the transmission ends, we should be able to read back a
+        -- different error code from RXQ.
+        info("Waiting for end of transmission...");
+        wait for 20 us;
+        
+        WB_CYC_O    <= '1';
+        WB_STB_O    <= '1';
+        WB_WE_O     <= '0';
+        WB_ADR_O    <= "10";
+        wait until rising_edge(WB_CLK);
+        
+        if WB_ERR_I /= '1' then
+            wait until WB_ERR_I = '1';
+        end if;
+        
+        WB_CYC_O    <= '0';
+        WB_STB_O    <= '0';
+        
+        -- As RXQ should now be empty, we should get 'not supported' when
+        -- we attempt to read a value from it.
+        check_equal(WB_DAT_I, std_ulogic_vector'(x"02"), "Error cleared");
         
         info("Done.");
         CaptureDone <= '1';

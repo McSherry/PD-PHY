@@ -149,6 +149,7 @@ architecture Impl of BiphaseMarkReceiver is
     signal RXQ_FULL, RXQ_EMPTY  : std_ulogic;
     signal RXQ_WERR, RXQ_RERR   : std_ulogic;
     signal RXQ_IS_K             : std_ulogic;
+    signal RXQ_RST              : std_ulogic := '0';
     
     -- CRC engine signals
     signal CRC_WE, CRC_D        : std_ulogic := '0';
@@ -205,7 +206,11 @@ begin
             S2_DataStall,
             
             -- Data is ready and can be read by the interface's master
-            S3_Ready
+            S3_Ready,
+            
+            -- The interface encountered an error when receiving data and is
+            -- waiting for the line to return to idle
+            S4_Error
             );
             
         variable State : WBState_t := S1_BeginDataLoad;
@@ -232,6 +237,11 @@ begin
                 when S2_DataStall =>
                     State       := S3_Ready;
                     
+                when S3_Ready =>
+                    if (ERR_INVSYM or ERR_BUFOVF or ERR_INVPRE or ERR_RECTIME or ERR_CRCFAIL) = '1' then
+                        State   := S4_Error;
+                    end if;
+                    
                 when others =>
                     null;
             end case;            
@@ -245,6 +255,7 @@ begin
             -- Otherwise, if a cycle is ongoing and our strobe has been
             -- asserted, a Wishbone master is requesting we do something.
             elsif WB_CYC_I = '1' and WB_STB_I = '1' then
+            
                 -- We expose three registers to the bus, so we need to switch
                 -- on the address provided to determine our behaviour.
                 case WB_ADR_I is
@@ -259,10 +270,10 @@ begin
                             
                         -- If a read is requested, that's fine in the general
                         -- case, but...
-                        else
+                        else                        
                             -- If any internal error signals are asserted, we
                             -- can't provide any data.
-                            if (ERR_INVSYM or ERR_BUFOVF or ERR_INVPRE or ERR_RECTIME or ERR_CRCFAIL) = '1' then
+                            if State = S4_Error then
                                 WB_ERR_O    <= '1';
                                 REG_ERRNO   <= ERRNO_INVSYMBOL      when ERR_INVSYM = '1'   else
                                                ERRNO_RXBUFOVF       when ERR_BUFOVF = '1'   else
@@ -367,7 +378,12 @@ begin
             --      The interpreter is decoding the value from the line and
             --      shifting it into a register ready to be decoded.
             S3_ReadIn_Start,
-            S3_ReadIn_HighEnd
+            S3_ReadIn_HighEnd,
+            
+            -- State 4: Error hold
+            --      The interpreter encountered an error and is waiting until
+            --      the end of the transmission.
+            S4_ErrorHold
         );
         
         -- The current state
@@ -535,7 +551,7 @@ begin
                             -- If the full-UI tap is high, logic zero. We
                             -- stay in the same state because we don't know
                             -- what to expect next.
-                            elsif TAP_F_UI = '1' then
+                            elsif TAP_F_UI = '1' then                              
                                 SR_RXIN <= '0' & SR_RXIN(4 downto 1);
                                 Count := Count + 1;
                                 
@@ -565,7 +581,7 @@ begin
                                 
                             -- If that tap is high, we can shift in the next
                             -- bit and return to our previous state
-                            elsif TAP_H_UI = '1' then
+                            elsif TAP_H_UI = '1' then                              
                                 SR_RXIN <= '1' & SR_RXIN(4 downto 1);
                                 State   := S3_ReadIn_Start;
                                 Count   := Count + 1;
@@ -575,6 +591,9 @@ begin
                                 assert false report "Not implemented";
                             end if;
                         end if;
+                        
+                    when S4_ErrorHold =>
+                        null;
                 end case;
                 
                 
@@ -596,8 +615,23 @@ begin
                     -- the RX queue.
                     when S3_ReadIn_Start | S3_ReadIn_HighEnd =>
                         if RXIN_EDGE = '1' and Count = 5 then
-                            LDEC_WE <= '1';
-                            Count   := 0;
+                            -- When we reach this point, the shift register won't
+                            -- have updated and so we need to decode for a second
+                            -- time so we can correctly detect invalid symbols.
+                            case (not TAP_F_UI and TAP_H_UI) & SR_RXIN(4 downto 1) is
+                                -- These symbols are all reserved and so invalid.
+                                when "00000" | "00001" | "00010" | "00011" |
+                                     "00100" | "00101" | "00110" | "01000" |
+                                     "01100" | "10000" | "11111" =>
+                                    ERR_INVSYM  <= '1';
+                                    State       := S4_ErrorHold;
+                                    
+                                -- Any others are valid and so we can signal to
+                                -- the decoder that it should proceed.
+                                when others =>                        
+                                    LDEC_WE <= '1';
+                                    Count   := 0;
+                            end case;
                         else
                             LDEC_WE <= '0';
                         end if;
@@ -793,7 +827,7 @@ begin
             FILLING         => open,
             WERR            => RXQ_WERR,
             
-            RST             => WB_RST_I,
+            RST             => RXQ_RST,
             
             RDCLK           => '0',
             RREQ            => RXQ_RREQ,
@@ -802,6 +836,9 @@ begin
             EMPTY           => RXQ_EMPTY,
             RERR            => RXQ_RERR
             );
+            
+    RXQ_RST <= '1' when (WB_RST_I or ERR_INVSYM or ERR_BUFOVF or ERR_INVPRE or
+                           ERR_RECTIME or ERR_CRCFAIL) = '1' else '0';
     
     -- A CRC-32 generator to verify the integrity of received data
     CRCEngine: PDCRCEngine port map(
