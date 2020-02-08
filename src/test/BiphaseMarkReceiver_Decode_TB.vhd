@@ -12,8 +12,8 @@ library vunit_lib;
 context vunit_lib.vunit_context;
 
 
--- Provides an end-to-end test running the BMC transmitter through a Wishbone
--- bus 'single write' transaction which results in line-driven output.
+-- Provides an end-to-end test running the BMC receiver through receiving a
+-- message and the associated Wishbone reads needed to process the data.
 entity BiphaseMarkReceiver_Decode_TB is
     generic(runner_cfg : string := runner_cfg_default);
 end BiphaseMarkReceiver_Decode_TB;
@@ -156,6 +156,7 @@ begin
             
             PreambleCount := PreambleCount + 1;
         end loop;
+        
         info("Preamble finished.");
         
         
