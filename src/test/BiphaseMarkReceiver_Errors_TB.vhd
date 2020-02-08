@@ -264,11 +264,24 @@ begin
         WB_CYC_O    <= '1';
         WB_STB_O    <= '1';
         WB_WE_O     <= '0';
-        WB_ADR_O    <= "10";
+        WB_ADR_O    <= "00";
         wait until rising_edge(WB_CLK);
         
         if WB_ERR_I /= '1' then
             wait until WB_ERR_I = '1';
+        end if;
+        
+        WB_STB_O    <= '0';
+        wait until rising_edge(WB_CLK);
+        
+        WB_CYC_O    <= '1';
+        WB_STB_O    <= '1';
+        WB_WE_O     <= '0';
+        WB_ADR_O    <= "10";
+        wait until rising_edge(WB_CLK);
+        
+        if WB_ACK_I /= '1' then
+            wait until WB_ACK_I = '1';
         end if;
         
         WB_CYC_O    <= '0';

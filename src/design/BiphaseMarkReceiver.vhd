@@ -111,6 +111,8 @@ architecture Impl of BiphaseMarkReceiver is
     signal R_DECODE     : std_ulogic_vector(7 downto 0) := (others => '0');
     -- Signal asserted when a transition occurs on RXIN
     signal RXIN_EDGE    : std_ulogic := '0';
+    -- Signal strobed when RXIN has returned to line idle
+    signal RXIN_IDLE    : std_ulogic := '0';
     -- The shift register used to measure the duration of pulses
     signal SR_RXDECODE  : std_ulogic_vector(22 downto 0) := (others => '0');
     -- And taps off that shift register used to decode
@@ -238,9 +240,12 @@ begin
                     State       := S3_Ready;
                     
                 when S3_Ready =>
-                    if (ERR_INVSYM or ERR_BUFOVF or ERR_INVPRE or ERR_RECTIME or ERR_CRCFAIL) = '1' then
-                        State   := S4_Error;
-                    end if;
+                    State := S4_Error when (ERR_INVSYM or ERR_BUFOVF or
+                                            ERR_INVPRE or ERR_RECTIME or
+                                            ERR_CRCFAIL) = '1';
+                    
+                when S4_Error =>
+                    State := S1_BeginDataLoad when RXIN_IDLE = '1';
                     
                 when others =>
                     null;
@@ -592,8 +597,23 @@ begin
                             end if;
                         end if;
                         
+                    -- If we're in an error state, we wait until the line
+                    -- returns to idle.
                     when S4_ErrorHold =>
-                        null;
+                        if RXIN_IDLE = '1' then
+                            -- Clear all of our error signals
+                            ERR_INVSYM  <= '0';
+                            ERR_BUFOVF  <= '0';
+                            ERR_INVPRE  <= '0';
+                            ERR_RECTIME <= '0';
+                            ERR_CRCFAIL <= '0';
+                            
+                            -- Clear other state
+                            Count := 0;
+                            
+                            -- Then wait for the next transmission
+                            State := S1_Idle;
+                        end if;
                 end case;
                 
                 
@@ -673,6 +693,11 @@ begin
             -- As we need to clear this in almost every state, it's easier
             -- to put it before the switch.
             RXQ_WREQ <= '0';
+            
+            -- If the queue is being cleared, we should reset too
+            if RXQ_RST = '1' then
+                State := S1_Idle;
+            end if;
         
             case State is
             
@@ -813,10 +838,66 @@ begin
     RXIN_EDGE <= '1' when SYNC_RXIN(1) /= SYNC_RXIN(2) else '0';
     
     
+    -- A component which monitors the line for transitions and determines
+    -- whether the line is idle based on the number of transitions within
+    -- a given period.
+    IdleDetector: process(WB_CLK)
+        type SR_EDGES_t is array(11 downto 0) of integer range 0 to 3;
+    
+        variable SR_EDGES   : SR_EDGES_t := (others => 0);
+        variable PERIOD_CNT : integer range 0 to 100 := 0;
+        variable EDGE_CNT   : integer range 0 to 36  := 0;
+        
+        -- Adjust this value based on WB_CLK; should be the number of clock
+        -- cycles (or as near as) per microsecond.
+        constant N_US       : integer := 100;
+    begin
+        if rising_edge(WB_CLK) then
+        
+            -- USB-PD sets out that the line idle state occurs when fewer than
+            -- three transitions have occurred within the last 12-20us.
+            --
+            -- To detect this condition, we maintain a 12-item shift register
+            -- of edge counts. An item is ejected every 1us, and so the delay
+            -- between an item entering the register and exiting it is 12us.
+            --
+            -- Each time an item is ejected, its value is subtracted from a
+            -- running count of edges. When an item is shifted in, its value is
+            -- added to the running count. This is likely to require more
+            -- resources than a population count, but should be possible to
+            -- carry out in a single cycle.
+        
+            -- If we detect an edge and haven't maxed out our count, increment.
+            if RXIN_EDGE = '1' and SR_EDGES(0) /= 3 then
+                SR_EDGES(0) := SR_EDGES(0) + 1;
+            end if;
+            
+            -- Every 1us...
+            if PERIOD_CNT = N_US then
+                -- Update the edge count
+                EDGE_CNT := (EDGE_CNT - SR_EDGES(SR_EDGES'left)) + SR_EDGES(0);
+                
+                -- Shift
+                SR_EDGES := SR_EDGES(SR_EDGES'left - 1 downto 0) & 0;
+                
+                -- Reset count
+                PERIOD_CNT := 0;
+            else
+                PERIOD_CNT := PERIOD_CNT + 1;
+            end if;
+            
+            -- If the running count, including the current 1us, is 3 or
+            -- greater, we're not idle.
+            RXIN_IDLE <= '1' when (EDGE_CNT + SR_EDGES(0)) < 3 else '0';
+            
+        end if;
+    end process;
+    
+    
     -- A synchronous FIFO to hold the data we've obtained from the line
     RXQueue: entity work.FIFO9(FFREG)
         generic map(
-            ASYNC   => false
+            ASYNC           => false
             )
         port map(
             WRCLK           => WB_CLK,
@@ -859,7 +940,7 @@ begin
         );
     
     -- A binary search component which will refine the frequency the
-    -- receiver operates at into synchronism with the remote transmitter
+    -- receiver operates in synchronism with the remote transmitter
     FreqRefiner: BinarySearcher port map(
         CLK => WB_CLK,
         TRG => FDIV_TRG,
