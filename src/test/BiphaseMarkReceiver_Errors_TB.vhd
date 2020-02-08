@@ -111,26 +111,34 @@ begin
             -- a bad one is read in by monitoring the 'TYPE' register.
             --
             -- '01001' --> 01h
-            --
-            -- 1
-            wait until rising_edge(RXCLK);
-            RXIN <= not RXIN;
-            wait until falling_edge(RXCLK);
-            RXIN <= not RXIN;
-            -- 0
-            wait until rising_edge(RXCLK);
-            RXIN <= not RXIN;
-            -- 0
-            wait until rising_edge(RXCLK);
-            RXIN <= not RXIN;
-            -- 1
-            wait until rising_edge(RXCLK);
-            RXIN <= not RXIN;
-            wait until falling_edge(RXCLK);
-            RXIN <= not RXIN;
-            -- 0
-            wait until rising_edge(RXCLK);
-            RXIN <= not RXIN;
+            
+            PreambleCount := 0;
+            
+            -- We loop to give ourselves enough time to detect that data is
+            -- available before the error. Two seems to be enough.
+            while PreambleCount < 2 loop
+                -- 1
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                wait until falling_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 1
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                wait until falling_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                
+                PreambleCount := PreambleCount + 1;
+            end loop;
         
             -- '00100' is a reserved symbol. This should probably be revised to
             -- test all invalid line symbols at some point.
