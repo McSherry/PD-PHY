@@ -165,6 +165,10 @@ architecture Impl of BiphaseMarkReceiver is
     signal CRC_RST              : std_ulogic := '0';
     signal CRC_OUT              : std_ulogic_vector(31 downto 0);
     
+    -- CRC constants
+    constant CRC_RESIDUAL       : std_ulogic_vector(31 downto 0) := x"2144DF1C";
+    constant CRC_INITIAL        : std_ulogic_vector(31 downto 0) := x"00000000";
+    
     -- End-of-packet detector signals
     signal EOPD_DET             : std_ulogic;
     signal EOPD_RST             : std_ulogic := '0';
@@ -678,9 +682,24 @@ begin
                             end case;
                         else
                             -- If we detected the end of the packet, we're done
-                            -- and can wait for line idle.
+                            -- and can verify the CRC before returning to idle.
                             if EOPD_DET = '1' then
-                                State := S5_ReturnToIdle;
+                                -- USB-PD transmissions are specified such that
+                                -- CRC'ing the whole message (excl. K-codes) will
+                                -- produce a constant final value in the CRC
+                                -- generator if the code is correct. This value is
+                                -- known as the residual.
+                                --
+                                -- This is only relevant for packets that include
+                                -- data. If a packet is solely K-codes, it doesn't
+                                -- include a CRC (and so its CRC will be the
+                                -- standard-specified initial value).
+                                if (CRC_OUT /= CRC_INITIAL) and (CRC_OUT /= CRC_RESIDUAL) then
+                                    ERR_CRCFAIL <= '1';
+                                    State       := S4_ErrorHold;
+                                else
+                                    State := S5_ReturnToIdle;
+                                end if;
                             end if;
                         
                             LDEC_WE <= '0';
