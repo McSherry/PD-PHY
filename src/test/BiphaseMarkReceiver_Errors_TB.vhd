@@ -170,6 +170,7 @@ begin
             
             -- We loop to give ourselves enough time to detect that data is
             -- available before the error. Two seems to be enough.
+            info("TX - Writing good data...");
             while PreambleCount < 2 loop
                 -- 1
                 wait until rising_edge(RXCLK);
@@ -196,6 +197,7 @@ begin
         
             -- '00100' is a reserved symbol. This should probably be revised to
             -- test all invalid line symbols at some point.
+            info("TX - Writing bad symbol...");
             --
             -- 0
             wait until rising_edge(RXCLK);
@@ -359,8 +361,8 @@ begin
                 WB_STB_O    <= '0';
                 wait until rising_edge(WB_CLK);
                     
-                -- If we have raw data, move on.
-                if WB_DAT_I = x"03" then
+                -- If we have data, move on.
+                if WB_DAT_I = x"01" or WB_DAT_I = x"03" then
                     exit;
                 end if;
             end loop;
