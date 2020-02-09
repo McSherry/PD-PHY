@@ -665,8 +665,8 @@ begin
                             case (not TAP_F_UI and TAP_H_UI) & SR_RXIN(4 downto 1) is
                                 -- These symbols are all reserved and so invalid.
                                 when "00000" | "00001" | "00010" | "00011" |
-                                     "00100" | "00101" | "00110" | "01000" |
-                                     "01100" | "10000" | "11111" =>
+                                     "00100" | "00101" | "01000" | "01100" |
+                                     "10000" | "11111" =>
                                     ERR_INVSYM  <= '1';
                                     State       := S4_ErrorHold;
                                     
