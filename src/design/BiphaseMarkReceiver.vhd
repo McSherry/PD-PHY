@@ -1001,11 +1001,11 @@ begin
     -- whether the line is idle based on the number of transitions within
     -- a given period.
     IdleDetector: process(WB_CLK)
-        type SR_EDGES_t is array(11 downto 0) of integer range 0 to 3;
+        type SR_EDGES_t is array(13 downto 0) of integer range 0 to 3;
     
         variable SR_EDGES   : SR_EDGES_t := (others => 0);
         variable PERIOD_CNT : integer range 0 to 100 := 0;
-        variable EDGE_CNT   : integer range 0 to 36  := 0;
+        variable EDGE_CNT   : integer range 0 to 42  := 0;
         
         -- Adjust this value based on WB_CLK; should be the number of clock
         -- cycles (or as near as) per microsecond.
@@ -1016,15 +1016,20 @@ begin
             -- USB-PD sets out that the line idle state occurs when fewer than
             -- three transitions have occurred within the last 12-20us.
             --
-            -- To detect this condition, we maintain a 12-item shift register
+            -- To detect this condition, we maintain a 14-item shift register
             -- of edge counts. An item is ejected every 1us, and so the delay
-            -- between an item entering the register and exiting it is 12us.
+            -- between an item entering the register and exiting it is 14us.
             --
             -- Each time an item is ejected, its value is subtracted from a
             -- running count of edges. When an item is shifted in, its value is
             -- added to the running count. This is likely to require more
             -- resources than a population count, but should be possible to
             -- carry out in a single cycle.
+            
+            -- NOTE:
+            --      In simulation, at 12us, very slow data clocks resulted in
+            --      false detection of overlong pulses. It is set to 14us here,
+            --      which should provide extra leeway.
         
             -- If we detect an edge and haven't maxed out our count, increment.
             if RXIN_EDGE = '1' and SR_EDGES(0) /= 3 then

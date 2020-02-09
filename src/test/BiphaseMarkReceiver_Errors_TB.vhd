@@ -566,7 +566,7 @@ begin
         -- After the transmission ends, we should be able to read back a
         -- different error code from RXQ.
         info("RX - Waiting for end of transmission...");
-        wait for 24 us;
+        wait for 26 us;
         
         WB_CYC_O    <= '1';
         WB_STB_O    <= '1';
