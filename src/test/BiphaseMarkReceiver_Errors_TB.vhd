@@ -67,6 +67,34 @@ architecture Impl of BiphaseMarkReceiver_Errors_TB is
     -- Test internal signals
     signal TestBegin    : std_ulogic := '0';
     signal CaptureDone  : std_ulogic := '0';
+    
+    -- Test data
+    --
+    -- K-codes
+    constant K_SYNC1    : std_ulogic_vector(4 downto 0) := "11000";
+    constant K_SYNC2    : std_ulogic_vector(4 downto 0) := "10001";
+    constant K_EOP      : std_ulogic_vector(4 downto 0) := "01101";
+    --
+    -- This is the 'GoodCRC' message illustrated in Appendix A.2 of USB-PD. It
+    -- is given in reverse order here to allow the individual components to be
+    -- written big-endian, easing reading.
+    
+    -- This is the 'GoodCRC' message from the 'Decode' test, except that the
+    -- header is changed to '0102h' to throw off the CRC.
+    constant MSG_GOODCRC : std_ulogic_vector((17 * 5) - 1 downto 0) := (
+        -- EOP
+        K_EOP &
+    
+        -- CRC32 (2FC51328h)
+        "10100" & "11101" & "11010" & "01011" & "01001" &
+        "10101" & "10100" & "10010" &
+    
+        -- Bad 'GoodCRC' header (0102h, should be 0101h)
+        "10100" & "01001" & "11110" & "01001" &
+    
+        -- Start of Packet
+        K_SYNC2 & K_SYNC1 & K_SYNC1 & K_SYNC1
+        );
 begin
     -- This is an arbitrary high value
     test_runner_watchdog(runner, 200 * T_BMC);
@@ -82,7 +110,7 @@ begin
         
         -- We start with the 64-bit preamble, which is common to almost all
         -- of the tests that we're looking to perform here.
-        info("Beginning preamble...");
+        info("TX - Beginning preamble...");
         
         while PreambleCount < 32 loop
             -- To transmit the logic lows in the preamble, we simply invert on
@@ -100,7 +128,7 @@ begin
             PreambleCount := PreambleCount + 1;
         end loop;
         
-        info("Preamble finished.");
+        info("TX - Preamble finished.");
         
         TestBegin <= '1';
         
@@ -174,7 +202,7 @@ begin
             -- the item that will be read out the front of the FIFO automatically,
             -- and then another to cause overflow.
             while PreambleCount < 19 loop
-                info("Writing symbol #" & to_string(PreambleCount) & "...");
+                info("TX - Writing symbol #" & to_string(PreambleCount) & "...");
             
                 -- 0
                 wait until rising_edge(RXCLK);
@@ -198,6 +226,37 @@ begin
                 
                 PreambleCount := PreambleCount + 1;
             end loop;
+        
+        -- If the data received by the BMC receiver does not match the CRC at
+        -- the end of a message, that's an error.
+        elsif run("crc_failure") then
+            -- Transmit our 'GoodCRC' message. This is effectively the same as
+            -- the 'Decode' test
+            PreambleCount := 0;
+            info("TX - Writing GoodCRC...");
+            while PreambleCount < MSG_GOODCRC'length loop
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                
+                if MSG_GOODCRC(PreambleCount) = '1' then
+                    wait until falling_edge(RXCLK);
+                    RXIN <= not RXIN;
+                end if;
+                
+                PreambleCount := PreambleCount + 1;
+            end loop;
+            
+            -- Hold the line
+            info("TX - Holding line...");
+            wait until rising_edge(RXCLK);
+            RXIN <= not RXIN;
+            
+            if not RXIN = '1' then
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+            end if;
+            
+            info("TX - Transmission complete.");
         end if;
         
 
@@ -216,9 +275,10 @@ begin
         wait until TestBegin = '1';
         
         if running_test_case = "bad_line_symbol" or
-           running_test_case = "buffer_overflow" then
+           running_test_case = "buffer_overflow" or
+           running_test_case = "crc_failure" then
             -- First, we wait for the receiver to indicate it has data
-            info("Waiting for data...");
+            info("RX - Waiting for data...");
             while true loop
                 WB_CYC_O    <= '1';
                 WB_STB_O    <= '1';
@@ -241,7 +301,7 @@ begin
             
             -- Then, without reading, we wait for it to indicate that it no
             -- longer has data. This is a sign it's detected an error.
-            info("Waiting for error...");
+            info("RX - Waiting for error...");
             while true loop
                 WB_CYC_O    <= '1';
                 WB_STB_O    <= '1';
@@ -293,6 +353,8 @@ begin
                 ExpError := x"80";
             elsif running_test_case = "buffer_overflow" then
                 ExpError := x"81";
+            elsif running_test_case = "crc_failure" then
+                ExpError := x"83";
             end if;
             
             check_equal(WB_DAT_I, ExpError, "Error code");
@@ -301,7 +363,7 @@ begin
         
         -- After the transmission ends, we should be able to read back a
         -- different error code from RXQ.
-        info("Waiting for end of transmission...");
+        info("RX - Waiting for end of transmission...");
         wait for 24 us;
         
         WB_CYC_O    <= '1';
@@ -334,7 +396,7 @@ begin
         -- we attempt to read a value from it.
         check_equal(WB_DAT_I, std_ulogic_vector'(x"02"), "Error cleared");
         
-        info("Done.");
+        info("RX - Done.");
         CaptureDone <= '1';
         wait;
     end process;

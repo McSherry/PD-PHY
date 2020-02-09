@@ -74,7 +74,7 @@ architecture Impl of BiphaseMarkReceiver_Decode_TB is
     -- This is the 'GoodCRC' message illustrated in Appendix A.2 of USB-PD. It
     -- is given in reverse order here to allow the individual components to be
     -- written big-endian, easing reading.
-    constant MSG_GOODCRC : std_ulogic_vector(84 downto 0) := (
+    constant MSG_GOODCRC : std_ulogic_vector((17 * 5) - 1 downto 0) := (
         -- EOP
         K_EOP &
     
