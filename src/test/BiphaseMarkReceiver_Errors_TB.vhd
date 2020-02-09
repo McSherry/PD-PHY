@@ -73,6 +73,9 @@ architecture Impl of BiphaseMarkReceiver_Errors_TB is
     -- K-codes
     constant K_SYNC1    : std_ulogic_vector(4 downto 0) := "11000";
     constant K_SYNC2    : std_ulogic_vector(4 downto 0) := "10001";
+    constant K_SYNC3    : std_ulogic_vector(4 downto 0) := "00110";
+    constant K_RST1     : std_ulogic_vector(4 downto 0) := "00111";
+    constant K_RST2     : std_ulogic_vector(4 downto 0) := "11001";
     constant K_EOP      : std_ulogic_vector(4 downto 0) := "01101";
     --
     -- This is the 'GoodCRC' message illustrated in Appendix A.2 of USB-PD. It
@@ -94,6 +97,29 @@ architecture Impl of BiphaseMarkReceiver_Errors_TB is
     
         -- Start of Packet
         K_SYNC2 & K_SYNC1 & K_SYNC1 & K_SYNC1
+        );
+        
+    -- This is the 'Hard_Reset' message, which doesn't include a CRC.
+    constant MSG_HARDRST : std_ulogic_vector((4 * 5) - 1 downto 0) := (
+        K_RST2 & K_RST1 & K_RST1 & K_RST1
+        );
+    -- This is the decoded output as it will appear in the RX queue
+    constant DEC_HARDRST : std_ulogic_vector((4 * 8) - 1 downto 0) := (
+            x"04" & -- RST-2
+            x"03" & -- RST-1
+            x"03" & -- RST-1
+            x"03"   -- RST-1
+        );
+    -- This is the 'Cable_Reset' message, which doesn't include a CRC.
+    constant MSG_CABLERST : std_ulogic_vector((4 * 5) - 1 downto 0) := (
+        K_SYNC3 & K_RST1 & K_SYNC1 & K_RST1
+        );
+    -- This is the decoded output as it will appear in the RX queue
+    constant DEC_CABLERST : std_ulogic_vector((4 * 8) - 1 downto 0) := (
+            x"02" & -- Sync-3
+            x"03" & -- RST-1
+            x"00" & -- Sync-1
+            x"03"   -- RST-1
         );
 begin
     -- This is an arbitrary high value
@@ -257,6 +283,43 @@ begin
             end if;
             
             info("TX - Transmission complete.");
+            
+        -- If the message shouldn't include a CRC, the receiver shouldn't
+        -- indicate CRC failure when receiving it.
+        elsif run("crc_hard_reset") or run("crc_cable_reset") then
+            -- Transmit 'Cable_Reset'
+            PreambleCount := 0;
+            info("TX - Writing Cable_Reset...");
+            while PreambleCount < MSG_CABLERST'length loop
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                
+                if running_test_case = "crc_cable_reset" then
+                    if MSG_CABLERST(PreambleCount) = '1' then
+                        wait until falling_edge(RXCLK);
+                        RXIN <= not RXIN;
+                    end if;
+                else
+                    if MSG_HARDRST(PreambleCount) = '1' then
+                        wait until falling_edge(RXCLK);
+                        RXIN <= not RXIN;
+                    end if;
+                end if;
+                
+                PreambleCount := PreambleCount + 1;
+            end loop;
+            
+            -- Hold the line
+            info("TX - Holding line...");
+            wait until rising_edge(RXCLK);
+            RXIN <= not RXIN;
+            
+            if not RXIN = '1' then
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+            end if;
+            
+            info("TX - Transmission complete.");
         end if;
         
 
@@ -270,10 +333,13 @@ begin
     -- Carries out Wishbone transactions with the receiver so as to capture
     -- its output 
     capture: process
+        variable Index    : integer := 0;
         variable ExpError : std_ulogic_vector(7 downto 0);
     begin
         wait until TestBegin = '1';
         
+        -- We can test each of these in the same way: monitoring for data,
+        -- then an error. We just need to change the error code each time.
         if running_test_case = "bad_line_symbol" or
            running_test_case = "buffer_overflow" or
            running_test_case = "crc_failure" then
@@ -358,7 +424,65 @@ begin
             end if;
             
             check_equal(WB_DAT_I, ExpError, "Error code");
-            
+        
+        
+        -- In this case, we're looking for the absence of an error. We
+        -- should be able to read the four expected values out, and then
+        -- a subsequent read should error due to the RX queue being empty.
+        elsif running_test_case = "crc_hard_reset" or
+              running_test_case = "crc_cable_reset" then
+            info("RX - Waiting for data...");
+            while Index < 4 loop
+                -- First, we check 'TYPE' to make sure data is available
+                WB_CYC_O    <= '1';
+                WB_STB_O    <= '1';
+                WB_WE_O     <= '0';
+                WB_ADR_O    <= "01";
+                wait until rising_edge(WB_CLK);
+                
+                if WB_ACK_I /= '1' then
+                    wait until WB_ACK_I = '1';
+                end if;
+                
+                WB_STB_O    <= '0';
+                wait until rising_edge(WB_CLK);
+                
+                -- If we don't get a K-code, we go back and check again.
+                if WB_DAT_I /= x"03" then
+                    next;
+                end if;
+                
+                -- If we do get a K-code, we try to read it out.
+                WB_CYC_O    <= '1';
+                WB_STB_O    <= '1';
+                WB_WE_O     <= '0';
+                WB_ADR_O    <= "00";
+                wait until rising_edge(WB_CLK);
+                
+                if WB_ACK_I /= '1' then
+                    wait until WB_ACK_I = '1';
+                end if;
+                
+                WB_STB_O    <= '0';
+                wait until rising_edge(WB_CLK);
+                
+                -- Then check it equals what we expect
+                if running_test_case = "crc_hard_reset" then
+                    check_equal(
+                        WB_DAT_I,
+                        DEC_HARDRST((Index * 8) + 7 downto (Index * 8)),
+                        "Symbol #" & to_string(Index)
+                        );
+                else
+                    check_equal(
+                        WB_DAT_I,
+                        DEC_CABLERST((Index * 8) + 7 downto (Index * 8)),
+                        "Symbol #" & to_string(Index)
+                        );
+                end if;
+                    
+                Index := Index + 1;
+            end loop;
         end if;
         
         -- After the transmission ends, we should be able to read back a
