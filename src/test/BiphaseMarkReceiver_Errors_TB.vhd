@@ -322,6 +322,73 @@ begin
             end if;
             
             info("TX - Transmission complete.");
+        
+        -- If a pulse is much longer than it should be, that's an error we
+        -- should detect as it probably indicates the data is malformed. If
+        -- it's only slightly longer, we're not too fussed.
+        elsif run("overlong_pulse_low") or run("overlong_pulse_high_first") or
+              run("overlong_pulse_high_second") then
+            
+            -- Start by writing some good data, to give our capture process
+            -- time to detect that we've started a transmission
+            info("TX - Writing good data...");
+            while PreambleCount < 2 loop
+                -- 1
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                wait until falling_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 1
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                wait until falling_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                
+                PreambleCount := PreambleCount + 1;
+            end loop;
+            
+            -- And then some bad (10010b --> 08h)
+            --      We make the data bad simply by inserting an extra
+            --      wait before the state of the line changes.
+            --
+            -- 1
+            wait until rising_edge(RXCLK);
+            RXIN <= not RXIN;            
+            wait until falling_edge(RXCLK);
+            if running_test_case = "overlong_pulse_high_first" then
+                wait for T_BMC/4;
+            end if;
+            RXIN <= not RXIN;
+            -- 0
+            wait until rising_edge(RXCLK);
+            RXIN <= not RXIN;
+            -- 0
+            wait until rising_edge(RXCLK);
+            RXIN <= not RXIN;
+            -- 1
+            wait until rising_edge(RXCLK);
+            if running_test_case = "overlong_pulse_low" then
+                wait for T_BMC/2;
+            end if;
+            RXIN <= not RXIN;
+            wait until falling_edge(RXCLK);
+            RXIN <= not RXIN;
+            -- 0
+            wait until rising_edge(RXCLK);
+            if running_test_case = "overlong_pulse_high_second" then
+                wait for T_BMC/2;
+            end if;
+            RXIN <= not RXIN;
+            
         end if;
         
 
@@ -344,7 +411,10 @@ begin
         -- then an error. We just need to change the error code each time.
         if running_test_case = "bad_line_symbol" or
            running_test_case = "buffer_overflow" or
-           running_test_case = "crc_failure" then
+           running_test_case = "crc_failure" or
+           running_test_case = "overlong_pulse_low" or
+           running_test_case = "overlong_pulse_high_first" or
+           running_test_case = "overlong_pulse_high_second" then
             -- First, we wait for the receiver to indicate it has data
             info("RX - Waiting for data...");
             while true loop
@@ -423,6 +493,8 @@ begin
                 ExpError := x"81";
             elsif running_test_case = "crc_failure" then
                 ExpError := x"83";
+            else
+                ExpError := x"82";
             end if;
             
             check_equal(WB_DAT_I, ExpError, "Error code");
