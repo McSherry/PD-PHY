@@ -128,8 +128,6 @@ architecture Impl of BiphaseMarkReceiver is
     signal ERR_INVSYM   : std_ulogic := '0';
     -- Buffer overflow
     signal ERR_BUFOVF   : std_ulogic := '0';
-    -- Invalid preamble
-    signal ERR_INVPRE   : std_ulogic := '0';
     -- Receive timeout
     signal ERR_RECTIME  : std_ulogic := '0';
     -- CRC failure
@@ -171,7 +169,6 @@ architecture Impl of BiphaseMarkReceiver is
     constant ERRNO_NOTSUPPT     : std_ulogic_vector(7 downto 0) := x"02";
     constant ERRNO_INVSYMBOL    : std_ulogic_vector(7 downto 0) := x"80";
     constant ERRNO_RXBUFOVF     : std_ulogic_vector(7 downto 0) := x"81";
-    constant ERRNO_INVPREAMBLE  : std_ulogic_vector(7 downto 0) := x"82";
     constant ERRNO_RECVTIMEOUT  : std_ulogic_vector(7 downto 0) := x"83";
     constant ERRNO_CRCFAILURE   : std_ulogic_vector(7 downto 0) := x"84";
 begin
@@ -187,9 +184,7 @@ begin
     --      o Logic already implemented (PDEOPDetector)
     --
     --  o Add error detection
-    --      o Line symbol - Needs to compare decoder input against known-valids
     --      o Buffer overfow - Needs to monitor for FIFO 'FULL' signal
-    --      o Preamble - Needs to verify that pulse lengths are as expected
     --      o Timeout - Needs to extend shift reg, check for extralong pulses
     --      o CRC failure - Needs to extract, compare CRCs from transmissions
     --      o General - Needs a hold state that maintains error until end of
@@ -241,8 +236,7 @@ begin
                     
                 when S3_Ready =>
                     State := S4_Error when (ERR_INVSYM or ERR_BUFOVF or
-                                            ERR_INVPRE or ERR_RECTIME or
-                                            ERR_CRCFAIL) = '1';
+                                            ERR_RECTIME or ERR_CRCFAIL) = '1';
                     
                 when S4_Error =>
                     State := S1_BeginDataLoad when RXIN_IDLE = '1';
@@ -282,7 +276,6 @@ begin
                                 WB_ERR_O    <= '1';
                                 REG_ERRNO   <= ERRNO_INVSYMBOL      when ERR_INVSYM = '1'   else
                                                ERRNO_RXBUFOVF       when ERR_BUFOVF = '1'   else
-                                               ERRNO_INVPREAMBLE    when ERR_INVPRE = '1'   else
                                                ERRNO_RECVTIMEOUT    when ERR_RECTIME = '1'  else
                                                ERRNO_CRCFAILURE     when ERR_CRCFAIL = '1';
                            
@@ -604,7 +597,6 @@ begin
                             -- Clear all of our error signals
                             ERR_INVSYM  <= '0';
                             ERR_BUFOVF  <= '0';
-                            ERR_INVPRE  <= '0';
                             ERR_RECTIME <= '0';
                             ERR_CRCFAIL <= '0';
                             
@@ -918,8 +910,8 @@ begin
             RERR            => RXQ_RERR
             );
             
-    RXQ_RST <= '1' when (WB_RST_I or ERR_INVSYM or ERR_BUFOVF or ERR_INVPRE or
-                           ERR_RECTIME or ERR_CRCFAIL) = '1' else '0';
+    RXQ_RST <= '1' when (WB_RST_I or ERR_INVSYM or ERR_BUFOVF or ERR_RECTIME or
+                         ERR_CRCFAIL) = '1' else '0';
     
     -- A CRC-32 generator to verify the integrity of received data
     CRCEngine: PDCRCEngine port map(
