@@ -163,6 +163,41 @@ begin
             
             wait until rising_edge(RXCLK);
             RXIN <= not RXIN;
+        
+        
+        -- If the RX queue fills to capacity and data is still to be written,
+        -- that should result in an error.
+        elsif run("buffer_overflow") then
+            PreambleCount := 0;
+            
+            -- The 'FFREG' FIFO architecture has a capacity of 16, plus one for
+            -- the item that will be read out the front of the FIFO automatically,
+            -- and then another to cause overflow.
+            while PreambleCount < 19 loop
+                info("Writing symbol #" & to_string(PreambleCount) & "...");
+            
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 0
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 1
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                wait until falling_edge(RXCLK);
+                RXIN <= not RXIN;
+                -- 1
+                wait until rising_edge(RXCLK);
+                RXIN <= not RXIN;
+                wait until falling_edge(RXCLK);
+                RXIN <= not RXIN;
+                
+                PreambleCount := PreambleCount + 1;
+            end loop;
         end if;
         
 
@@ -176,10 +211,12 @@ begin
     -- Carries out Wishbone transactions with the receiver so as to capture
     -- its output 
     capture: process
+        variable ExpError : std_ulogic_vector(7 downto 0);
     begin
         wait until TestBegin = '1';
         
-        if running_test_case = "bad_line_symbol" then
+        if running_test_case = "bad_line_symbol" or
+           running_test_case = "buffer_overflow" then
             -- First, we wait for the receiver to indicate it has data
             info("Waiting for data...");
             while true loop
@@ -197,7 +234,7 @@ begin
                 wait until rising_edge(WB_CLK);
                     
                 -- If we have raw data, move on.
-                if WB_DAT_I = x"01" then
+                if WB_DAT_I = x"03" then
                     exit;
                 end if;
             end loop;
@@ -252,14 +289,20 @@ begin
             WB_STB_O <= '0';
             WB_CYC_O <= '0';
             
-            check_equal(WB_DAT_I, std_ulogic_vector'(x"80"), "Error code");
+            if running_test_case = "bad_line_symbol" then
+                ExpError := x"80";
+            elsif running_test_case = "buffer_overflow" then
+                ExpError := x"81";
+            end if;
+            
+            check_equal(WB_DAT_I, ExpError, "Error code");
             
         end if;
         
         -- After the transmission ends, we should be able to read back a
         -- different error code from RXQ.
         info("Waiting for end of transmission...");
-        wait for 20 us;
+        wait for 24 us;
         
         WB_CYC_O    <= '1';
         WB_STB_O    <= '1';

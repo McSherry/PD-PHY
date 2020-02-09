@@ -169,8 +169,8 @@ architecture Impl of BiphaseMarkReceiver is
     constant ERRNO_NOTSUPPT     : std_ulogic_vector(7 downto 0) := x"02";
     constant ERRNO_INVSYMBOL    : std_ulogic_vector(7 downto 0) := x"80";
     constant ERRNO_RXBUFOVF     : std_ulogic_vector(7 downto 0) := x"81";
-    constant ERRNO_RECVTIMEOUT  : std_ulogic_vector(7 downto 0) := x"83";
-    constant ERRNO_CRCFAILURE   : std_ulogic_vector(7 downto 0) := x"84";
+    constant ERRNO_RECVTIMEOUT  : std_ulogic_vector(7 downto 0) := x"82";
+    constant ERRNO_CRCFAILURE   : std_ulogic_vector(7 downto 0) := x"83";
 begin
     -- TODO:
     --
@@ -184,7 +184,6 @@ begin
     --      o Logic already implemented (PDEOPDetector)
     --
     --  o Add error detection
-    --      o Buffer overfow - Needs to monitor for FIFO 'FULL' signal
     --      o Timeout - Needs to extend shift reg, check for extralong pulses
     --      o CRC failure - Needs to extract, compare CRCs from transmissions
     --      o General - Needs a hold state that maintains error until end of
@@ -399,6 +398,15 @@ begin
                 Count := 0;
                 
             else
+                -- If we receive a FIFO write error at any time, that indicates
+                -- that we've filled the FIFO. We can no longer store data there,
+                -- but the data will keep coming from the remote transmitter. Error.
+                if RXQ_WERR = '1' then
+                    ERR_BUFOVF  <= '1';
+                    State       := S4_ErrorHold;
+                end if;
+                
+                
                 -- **********
                 --
                 -- The first set of logic handles reading in values from the
@@ -627,6 +635,7 @@ begin
                     -- the RX queue.
                     when S3_ReadIn_Start | S3_ReadIn_HighEnd =>
                         if RXIN_EDGE = '1' and Count = 5 then
+                            
                             -- When we reach this point, the shift register won't
                             -- have updated and so we need to decode for a second
                             -- time so we can correctly detect invalid symbols.
