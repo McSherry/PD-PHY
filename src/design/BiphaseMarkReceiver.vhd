@@ -78,6 +78,15 @@ architecture Impl of BiphaseMarkReceiver is
         );
     end component;
     
+    component PDEOPDetector port(
+        CLK : in    std_logic;
+        EN  : in    std_logic;
+        D   : in    std_logic_vector(4 downto 0);
+        RST : in    std_logic;
+        DET : out   std_ulogic
+        );
+    end component;
+    
     component Decoder4b5b port(
         CLK : in    std_logic;
         WE  : in    std_logic;
@@ -154,6 +163,10 @@ architecture Impl of BiphaseMarkReceiver is
     -- CRC engine signals
     signal CRC_WE, CRC_D        : std_ulogic := '0';
     signal CRC_OUT              : std_ulogic_vector(31 downto 0);
+    
+    -- End-of-packet detector signals
+    signal EOPD_DET             : std_ulogic;
+    signal EOPD_RST             : std_ulogic := '0';
     
     -- 4b5b decoder signals
     signal LDEC_WE              : std_ulogic := '0';
@@ -380,7 +393,12 @@ begin
             -- State 4: Error hold
             --      The interpreter encountered an error and is waiting until
             --      the end of the transmission.
-            S4_ErrorHold
+            S4_ErrorHold,
+            
+            -- State 5: Returning to idle
+            --      The interpreter has detected the end of a packet and is
+            --      now waiting for the line to return to idle.
+            S5_ReturnToIdle
         );
         
         -- The current state
@@ -530,8 +548,9 @@ begin
                                 State := S2d_Preamble_WaitHigh2;
                                 
                             elsif Count = 63 then
-                                State := S3_ReadIn_Start;
-                                Count := 0;
+                                State       := S3_ReadIn_Start;
+                                Count       := 0;
+                                EOPD_RST    <= '0';
                                 
                             else
                                 State := S2c_Preamble_WaitLow;
@@ -598,9 +617,11 @@ begin
                             end if;
                         end if;
                         
+                    -- ##########
+                    --
                     -- If we're in an error state, we wait until the line
                     -- returns to idle.
-                    when S4_ErrorHold =>
+                    when S4_ErrorHold | S5_ReturnToIdle =>
                         if RXIN_IDLE = '1' then
                             -- Clear all of our error signals
                             ERR_INVSYM  <= '0';
@@ -609,7 +630,8 @@ begin
                             ERR_CRCFAIL <= '0';
                             
                             -- Clear other state
-                            Count := 0;
+                            Count       := 0;
+                            EOPD_RST    <= '1';
                             
                             -- Then wait for the next transmission
                             State := S1_Idle;
@@ -654,6 +676,12 @@ begin
                                     Count   := 0;
                             end case;
                         else
+                            -- If we detected the end of the packet, we're done
+                            -- and can wait for line idle.
+                            if EOPD_DET = '1' then
+                                State := S5_ReturnToIdle;
+                            end if;
+                        
                             LDEC_WE <= '0';
                         end if;
                         
@@ -929,6 +957,15 @@ begin
         D   => CRC_D,
         RST => WB_RST_I,
         Q   => CRC_OUT
+        );
+    
+    -- A unit for detecting the ends of USB-PD packets
+    EOPDetector: PDEOPDetector port map(
+        CLK => WB_CLK,
+        EN  => LDEC_WE,
+        D   => SR_RXIN,
+        RST => EOPD_RST,
+        DET => EOPD_DET
         );
         
     -- A 4b5b decoder to translate received line symbols into byte values

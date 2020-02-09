@@ -199,6 +199,7 @@ begin
         if CaptureDone /= '1' then
             wait until CaptureDone = '1';
         end if;
+        
         test_runner_cleanup(runner);
     end process;
     
