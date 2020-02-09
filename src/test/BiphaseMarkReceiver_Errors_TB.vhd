@@ -332,6 +332,7 @@ begin
             -- Start by writing some good data, to give our capture process
             -- time to detect that we've started a transmission
             info("TX - Writing good data...");
+            PreambleCount := 0;
             while PreambleCount < 2 loop
                 -- 1
                 wait until rising_edge(RXCLK);
@@ -365,6 +366,7 @@ begin
             RXIN <= not RXIN;            
             wait until falling_edge(RXCLK);
             if running_test_case = "overlong_pulse_high_first" then
+                info("TX - Inserting overlong pulse...");
                 wait for T_BMC/4;
             end if;
             RXIN <= not RXIN;
@@ -377,7 +379,8 @@ begin
             -- 1
             wait until rising_edge(RXCLK);
             if running_test_case = "overlong_pulse_low" then
-                wait for T_BMC/2;
+                info("TX - Inserting overlong pulse...");
+                wait for T_BMC/1.5;
             end if;
             RXIN <= not RXIN;
             wait until falling_edge(RXCLK);
@@ -385,6 +388,7 @@ begin
             -- 0
             wait until rising_edge(RXCLK);
             if running_test_case = "overlong_pulse_high_second" then
+                info("TX - Inserting overlong pulse...");
                 wait for T_BMC/2;
             end if;
             RXIN <= not RXIN;

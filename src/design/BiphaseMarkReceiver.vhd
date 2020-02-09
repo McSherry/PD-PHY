@@ -123,11 +123,13 @@ architecture Impl of BiphaseMarkReceiver is
     -- Signal strobed when RXIN has returned to line idle
     signal RXIN_IDLE    : std_ulogic := '0';
     -- The shift register used to measure the duration of pulses
-    signal SR_RXDECODE  : std_ulogic_vector(22 downto 0) := (others => '0');
+    signal SR_RXDECODE  : std_ulogic_vector(27 downto 0) := (others => '0');
     -- And taps off that shift register used to decode
-    signal TAP_O_UI     : std_ulogic := '0'; -- Overlong
-    signal TAP_F_UI     : std_ulogic := '0'; -- Full UI
-    signal TAP_H_UI     : std_ulogic := '0'; -- Half UI
+    signal TAP_OF_UI     : std_ulogic := '0'; -- Overlong, full
+    signal TAP_OT_UI     : std_ulogic := '0'; -- Overlong, tuning
+    signal TAP_F_UI     : std_ulogic  := '0'; -- Full UI
+    signal TAP_OH_UI     : std_ulogic := '0'; -- Overlong, half
+    signal TAP_H_UI     : std_ulogic  := '0'; -- Half UI
     
     -- Error signals to allow the Wishbone interface to correctly report any
     -- errors identified by the line-decoding portion. The signal remains
@@ -501,7 +503,7 @@ begin
                                 
                             -- Otherwise, if we aren't finished, we want to check
                             -- we're not too fast and not too slow
-                            elsif TAP_O_UI = '1' or TAP_F_UI = '0' then
+                            elsif TAP_OT_UI = '1' or TAP_F_UI = '0' then
                                 FDIV_TRG    <= '1';
                                 FDIV_CMP    <= TAP_F_UI;
                                 State := S2b_Preamble_RefineHigh1;
@@ -575,8 +577,10 @@ begin
                         if RXIN_EDGE = '1' then
                             -- If the overlong tap is high, something is wrong
                             -- with the data we're receiving
-                            if TAP_O_UI = '1' then
-                                assert false report "Not implemented";
+                            if (TAP_OF_UI or RXIN_IDLE or (TAP_OH_UI and not TAP_F_UI)) = '1' then
+                                ERR_RECTIME <= '1';
+                                State       := S4_ErrorHold;
+                                Count       := 0;
                                 
                             -- If the full-UI tap is high, logic zero. We
                             -- stay in the same state because we don't know
@@ -605,9 +609,15 @@ begin
                     when S3_ReadIn_HighEnd =>
                         if RXIN_EDGE = '1' then
                             -- We only expect the half-UI tap to be high. If
-                            -- anything else is, that's an error.
-                            if (TAP_O_UI or TAP_F_UI) = '1' then
-                                assert false report "Not implemented";
+                            -- anything else is, that's an error. We need only
+                            -- check the next-highest tap here, as it will be
+                            -- set if any further ones are also set.
+                            --
+                            -- If we encounter an unexpected idle
+                            if (TAP_OH_UI or RXIN_IDLE) = '1' then
+                                ERR_RECTIME <= '1';
+                                State       := S4_ErrorHold;
+                                Count       := 0;
                                 
                             -- If that tap is high, we can shift in the next
                             -- bit and return to our previous state
@@ -960,8 +970,10 @@ begin
     -- searches for the full-UI frequency, which should account for unusual
     -- frequencies not dividing nicely.
     TAP_H_UI    <= SR_RXDECODE(8);
+    TAP_OH_UI   <= SR_RXDECODE(12);
     TAP_F_UI    <= SR_RXDECODE(19);
-    TAP_O_UI    <= SR_RXDECODE(22);
+    TAP_OT_UI   <= SR_RXDECODE(22);
+    TAP_OF_UI   <= SR_RXDECODE(27);
 
     
     -- An edge detector which synchronises the external input from a remote
