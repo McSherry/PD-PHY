@@ -162,6 +162,7 @@ architecture Impl of BiphaseMarkReceiver is
     
     -- CRC engine signals
     signal CRC_WE, CRC_D        : std_ulogic := '0';
+    signal CRC_RST              : std_ulogic := '0';
     signal CRC_OUT              : std_ulogic_vector(31 downto 0);
     
     -- End-of-packet detector signals
@@ -787,6 +788,104 @@ begin
     end process;
     
     
+    -- Waits for a line symbol decode to be requested and, if the decode is for
+    -- raw data, passes it through the CRC engine.
+    --
+    -- Note that, because of the inversion and reversing introduced by the CRC
+    -- engine, a residual of '2144DF1Ch' is produced instead of 'C704DD7Bh'.
+    --
+    -- As implemented, this takes six 'WB_CLK' cycles. As the Wishbone clock
+    -- should be much faster than any data from the line, this should work with
+    -- no issues related to new data being missed.
+    CRCShifter: process(WB_CLK)
+        type CRCState_t is (
+            -- State 1: Idling
+            --      The shifter is waiting for a 4b5b decode to be signalled.
+            S1_Idle,
+            
+            -- State 2: Shift First or Cancel
+            --      The shifter identifies whether the decode produced a K-code
+            --      and, if it didn't, it shifts the data through the CRC
+            --      engine. If it did, it returns to idle.
+            S2_Shift1OrCancel,
+            
+            -- States 3 through 5: Shifting
+            --      The shifter passes each bit through the CRC engine in
+            --      sequence before returning to idle.
+            S3_Shift2,
+            S4_Shift3,
+            S5_Shift4
+            );
+        
+        -- The current state
+        variable State : CRCState_t := S1_Idle;
+        -- A register to hold a copy of the 4b5b decoder's output
+        variable RDATA : std_ulogic_vector(3 downto 0) := (others => '0');
+    begin
+        if rising_edge(WB_CLK) then
+        
+            -- We respond to three resets:
+            --  o By the Wishbone master
+            --  o As a result of an error
+            --  o Specific to us, which will be handled by the 
+            --    end-of-transmission logic
+            if (WB_RST_I or RXQ_RST or CRC_RST) = '1' then
+                State   := S1_Idle;
+                CRC_WE  <= '0';
+                
+            else
+                case State is
+                    
+                    -- ##########
+                    --
+                    -- Wait for a decode to be signalled.
+                    when S1_Idle =>
+                        CRC_WE  <= '0';
+                        State   := S2_Shift1OrCancel when LDEC_WE = '1';
+                        
+                    -- ##########
+                    --
+                    -- Once the decode has completed, determine whether we
+                    -- proceed with CRC'ing its output.
+                    when S2_Shift1OrCancel =>
+                        -- If it's a K-code, we can ignore it. USB-PD at s5.6.2
+                        -- excludes K-codes from CRC calculations.
+                        if LDEC_K = '1' then
+                            State := S1_Idle;
+                            
+                        -- But if it's data, we have to process it.
+                        else
+                            -- Keep a copy for ourselves, as we don't know
+                            -- what the decoder will do after this cycle.
+                            RDATA   := LDEC_OUT;
+                            -- Feed in the first bit
+                            CRC_D   <= RDATA(0);
+                            -- Enable the CRC engine
+                            CRC_WE  <= '1';
+                            -- Process the next bit
+                            State   := S3_Shift2;
+                       end if;
+                       
+                    -- ##########
+                    --
+                    -- Then shift all the data through until we've finished.
+                    when S3_Shift2 | S4_Shift3 | S5_Shift4 =>
+                        -- Shift
+                        RDATA   := '-' & RDATA(3 downto 1);
+                        -- Feed in
+                        CRC_D   <= RDATA(0);
+                        -- Next state
+                        State    := S4_Shift3 when State = S3_Shift2 else
+                                    S5_Shift4 when State = S4_Shift3 else
+                                    S1_Idle;
+                
+                end case;
+            end if;
+        
+        end if;
+    end process;
+    
+    
     -- Divides the Wishbone/master clock frequency based on the output of the
     -- binary search unit.
     FrequencyDivider: process(WB_CLK)
@@ -955,7 +1054,7 @@ begin
         CLK => WB_CLK,
         WE  => CRC_WE,
         D   => CRC_D,
-        RST => WB_RST_I,
+        RST => CRC_RST,
         Q   => CRC_OUT
         );
     
