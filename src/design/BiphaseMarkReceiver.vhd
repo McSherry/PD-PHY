@@ -1059,7 +1059,7 @@ begin
     
     
     -- A synchronous FIFO to hold the data we've obtained from the line
-    RXQueue: entity work.FIFO9(FFREG)
+    RXQueue: entity work.FIFO9(XBRAM)
         generic map(
             ASYNC           => false
             )

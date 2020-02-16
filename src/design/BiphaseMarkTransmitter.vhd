@@ -642,7 +642,7 @@ begin
 
 
     -- The FIFO that provides the TX buffer
-    BUF: entity work.FIFO9(FFREG)
+    BUF: entity work.FIFO9(XBRAM)
         generic map(
             ASYNC   => true
             )
