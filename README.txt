@@ -24,6 +24,13 @@ STRUCTURE
     script/         - Scripts related to project development
 
 
+BRANCHES
+
+    master          - Main development branch
+    sync_fifo_tests - Draft changes to test FIFO9 synchronously
+    fifo_bram       - Draft FIFO9->Xilinx BRAM mapping
+
+
 COPYRIGHT & LICENCE
 
     2019-20 (c) Liam McSherry
