@@ -69,41 +69,84 @@ end FIFO9;
 architecture XBRAM of FIFO9 is
     signal DummyParity  : std_ulogic_vector(3 downto 1);
     signal DummyOutput  : std_ulogic_vector(31 downto 8);
+    signal DummyRDCLK   : std_ulogic;
 begin
-    BUF: FIFO18E1
-        generic map(
-            ALMOST_EMPTY_OFFSET => x"0000",
-            ALMOST_FULL_OFFSET  => x"03FF", -- 1023
-            DATA_WIDTH          => 9,
-            DO_REG              => 0,
-            EN_SYN              => ASYNC,
-            FIFO_MODE           => "FIFO18"
-            )
-        port map(
-            WRCLK           => WRCLK,
-            WREN            => WREQ,
-            DIP(3 downto 1) => (others => '0'),
-            DIP(0)          => DI(8),
-            DI(31 downto 8) => (others => '0'),
-            DI(7 downto 0)  => DI(7 downto 0),
-            WRERR           => WERR,
-            FULL            => FULL,
-            ALMOSTFULL      => FILLING,
+    
+    AsyncGen: if ASYNC = true generate
+
+        ABUF: FIFO18E1
+            generic map(
+                ALMOST_EMPTY_OFFSET => x"0005",
+                ALMOST_FULL_OFFSET  => x"03FF", -- 1023
+                DATA_WIDTH          => 9,
+                DO_REG              => 1,
+                EN_SYN              => false,
+                FIFO_MODE           => "FIFO18"
+                )
+            port map(
+                WRCLK           => WRCLK,
+                WREN            => WREQ,
+                DIP(3 downto 1) => (others => '0'),
+                DIP(0)          => DI(8),
+                DI(31 downto 8) => (others => '0'),
+                DI(7 downto 0)  => DI(7 downto 0),
+                WRERR           => WERR,
+                FULL            => FULL,
+                ALMOSTFULL      => FILLING,
+                
+                RDCLK           => RDCLK,
+                RDEN            => RREQ,
+                DOP(3 downto 1) => DummyParity(3 downto 1),
+                DOP(0)          => DO(8),
+                DO(31 downto 8) => DummyOutput(31 downto 8),
+                DO(7 downto 0)  => DO(7 downto 0),
+                RDERR           => RERR,
+                EMPTY           => EMPTY,
+                
+                REGCE           => '1',
+                
+                RST             => RST,
+                RSTREG          => RST
+                );
             
-            RDCLK           => RDCLK,
-            RDEN            => RREQ,
-            DOP(3 downto 1) => DummyParity(3 downto 1),
-            DOP(0)          => DO(8),
-            DO(31 downto 8) => DummyOutput(31 downto 8),
-            DO(7 downto 0)  => DO(7 downto 0),
-            RDERR           => RERR,
-            EMPTY           => EMPTY,
-            
-            REGCE           => '1',
-            
-            RST             => RST,
-            RSTREG          => RST
-            );
+    else generate
+        
+
+        SBUF: FIFO18E1
+            generic map(
+                ALMOST_EMPTY_OFFSET => x"0005",
+                ALMOST_FULL_OFFSET  => x"03FF", -- 1023
+                DATA_WIDTH          => 9,
+                DO_REG              => 1,
+                EN_SYN              => true,
+                FIFO_MODE           => "FIFO18"
+                )
+            port map(
+                WRCLK           => WRCLK,
+                WREN            => WREQ,
+                DIP(3 downto 1) => (others => '0'),
+                DIP(0)          => DI(8),
+                DI(31 downto 8) => (others => '0'),
+                DI(7 downto 0)  => DI(7 downto 0),
+                WRERR           => WERR,
+                FULL            => FULL,
+                ALMOSTFULL      => FILLING,
+                
+                RDCLK           => RDCLK,
+                RDEN            => RREQ,
+                DOP(3 downto 1) => DummyParity(3 downto 1),
+                DOP(0)          => DO(8),
+                DO(31 downto 8) => DummyOutput(31 downto 8),
+                DO(7 downto 0)  => DO(7 downto 0),
+                RDERR           => RERR,
+                EMPTY           => EMPTY,
+                
+                REGCE           => '1',
+                
+                RST             => RST,
+                RSTREG          => RST
+                );
+    end generate AsyncGen;
 end;
 
 
