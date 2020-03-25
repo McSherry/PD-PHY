@@ -192,23 +192,6 @@ architecture Impl of BiphaseMarkReceiver is
     constant ERRNO_RECVTIMEOUT  : std_ulogic_vector(7 downto 0) := x"82";
     constant ERRNO_CRCFAILURE   : std_ulogic_vector(7 downto 0) := x"83";
 begin
-    -- TODO:
-    --
-    --  o Add CRC generation
-    --      o Receiver needs to recognise ordered set so it can omit it
-    --      o Receiver needs to detect EOP for the same reason
-    --
-    --  o Add graceful termination detection
-    --      o Receiver needs to detect EOP/Hard_Reset/Cable_Reset so it can
-    --        know a transmission ended gracefully
-    --      o Logic already implemented (PDEOPDetector)
-    --
-    --  o Add error detection
-    --      o Timeout - Needs to extend shift reg, check for extralong pulses
-    --      o CRC failure - Needs to extract, compare CRCs from transmissions
-    --      o General - Needs a hold state that maintains error until end of
-    --        transmission (which is line idle rather than EOP/etc)
-
 
     -- Processes and responds to requests on the receiver's Wishbone interface.
     WishboneIF: process(WB_CLK)        
