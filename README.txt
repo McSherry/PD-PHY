@@ -24,6 +24,11 @@ STRUCTURE
     script/         - Scripts related to project development
 
 
+TAGS
+
+    rev.1           - Controller as at B.Eng (Hons) submission
+
+
 BRANCHES
 
     master          - Main development branch
